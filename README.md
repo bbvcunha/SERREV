@@ -20,6 +20,14 @@ python3 -m http.server 8080
 
 Abra [http://localhost:8080](http://localhost:8080).
 
+## Versão online (celular)
+
+**https://bbvcunha.github.io/SERREV/**
+
+No iPhone/Android: abra o link no navegador → menu **Compartilhar** / **⋮** → **Adicionar à tela inicial** (atalho como app).
+
+Os dados ficam salvos no navegador do celular (não sincronizam automaticamente com o computador).
+
 ## Cálculos
 
 - **R$/L** = valor pago ÷ litros  

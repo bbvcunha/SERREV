@@ -26,7 +26,17 @@ Abra [http://localhost:8080](http://localhost:8080).
 
 No iPhone/Android: abra o link no navegador → menu **Compartilhar** / **⋮** → **Adicionar à tela inicial** (atalho como app).
 
-Os dados ficam salvos no navegador do celular (não sincronizam automaticamente com o computador).
+### Sincronizar celular e PC
+
+1. Configure o Firebase (guia **[SETUP-FIREBASE.md](SETUP-FIREBASE.md)** — ~5 min, grátis)
+2. Aba **Conta** → copie o código no celular → cole no outro aparelho → **Conectar**
+
+Sem Firebase: use **Exportar/Importar backup** na aba Conta.
+
+### Histórico
+
+- Aba **Dados** → **+ Adicionar ao histórico** (abastecimentos antigos)
+- **Editar** (✎) em qualquer linha
 
 ## Cálculos
 

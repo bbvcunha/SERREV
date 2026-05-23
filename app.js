@@ -1,5 +1,3 @@
-const STORAGE_FILLS = 'carKpi_fills';
-const STORAGE_MAINT = 'carKpi_maintenance';
 const LOCALE = 'pt-BR';
 
 const DEFAULT_MAINTENANCE = [
@@ -13,30 +11,20 @@ const DEFAULT_MAINTENANCE = [
 let chartInstances = {};
 let editingObsId = null;
 let editingAlarmId = null;
+let editingFillId = null;
+let currentScreen = 'entry';
 
-function loadFills() {
-  try {
-    const raw = localStorage.getItem(STORAGE_FILLS);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
+function getFills() {
+  return DataStore.fills;
 }
 
-function saveFills(fills) {
-  localStorage.setItem(STORAGE_FILLS, JSON.stringify(fills));
+function getMaintenance() {
+  return DataStore.maintenance.length ? DataStore.maintenance : structuredClone(DEFAULT_MAINTENANCE);
 }
 
-function loadMaintenance() {
-  try {
-    const raw = localStorage.getItem(STORAGE_MAINT);
-    if (raw) return JSON.parse(raw);
-  } catch { /* ignore */ }
-  return structuredClone(DEFAULT_MAINTENANCE);
-}
-
-function saveMaintenance(items) {
-  localStorage.setItem(STORAGE_MAINT, JSON.stringify(items));
+async function persistMaintenance(items) {
+  DataStore.maintenance = items;
+  await DataStore.persist();
 }
 
 function formatNumber(n, decimals = 0) {
@@ -47,8 +35,7 @@ function formatNumber(n, decimals = 0) {
 }
 
 function formatDateTime(iso) {
-  const d = new Date(iso);
-  return d.toLocaleString(LOCALE, {
+  return new Date(iso).toLocaleString(LOCALE, {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -67,54 +54,91 @@ function sortFills(fills) {
 
 function enrichFills(fills) {
   const sorted = sortFills(fills);
-
   return sorted.map((fill, index) => {
     const pricePerLiter = fill.liters > 0 ? fill.amount / fill.liters : null;
     let consumption = null;
     let distanceKm = null;
-
     if (index > 0) {
       const prev = sorted[index - 1];
       distanceKm = fill.mileage - prev.mileage;
-      if (distanceKm > 0 && fill.liters > 0) {
-        consumption = distanceKm / fill.liters;
-      }
+      if (distanceKm > 0 && fill.liters > 0) consumption = distanceKm / fill.liters;
     }
-
-    return {
-      ...fill,
-      pricePerLiter,
-      consumption,
-      distanceKm,
-    };
+    return { ...fill, pricePerLiter, consumption, distanceKm };
   });
 }
 
 function latestMileage(fills) {
   if (!fills.length) return 0;
-  const sorted = sortFills(fills);
-  return sorted[sorted.length - 1].mileage;
+  return sortFills(fills).at(-1).mileage;
 }
 
-function initDatetimeDefault() {
-  const input = document.getElementById('field-datetime');
+function initDatetimeInput(input) {
   const now = new Date();
   now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
   input.value = now.toISOString().slice(0, 16);
 }
 
+function updateSyncStatus() {
+  const el = document.getElementById('sync-status');
+  const { cloudEnabled, cloudReady, syncing, lastSyncedAt } = DataStore;
+
+  if (syncing) {
+    el.textContent = 'Sincronizando…';
+    el.className = 'sync-status syncing';
+    return;
+  }
+  if (cloudEnabled && cloudReady) {
+    const t = lastSyncedAt
+      ? lastSyncedAt.toLocaleString(LOCALE, { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })
+      : 'agora';
+    el.textContent = `Nuvem ativa · ${getFills().length} registros · sync ${t}`;
+    el.className = 'sync-status ok';
+    return;
+  }
+  if (cloudEnabled && !cloudReady) {
+    el.textContent = 'Conectando à nuvem…';
+    el.className = 'sync-status warn';
+    return;
+  }
+  el.textContent = `Salvo neste aparelho · ${getFills().length} registros · configure a nuvem em Conta`;
+  el.className = 'sync-status local';
+}
+
+function updateCloudBanner() {
+  const banner = document.getElementById('cloud-banner');
+  if (DataStore.cloudEnabled && DataStore.cloudReady) {
+    banner.classList.add('hidden');
+    return;
+  }
+  banner.classList.remove('hidden');
+  if (!DataStore.isFirebaseConfigured()) {
+    banner.innerHTML =
+      '<strong>Nuvem não configurada.</strong> Siga o arquivo <code>SETUP-FIREBASE.md</code> no repositório (cerca de 5 min) para sincronizar celular e PC. Enquanto isso, use <strong>Exportar/Importar backup</strong> abaixo.';
+  } else {
+    banner.textContent = 'Conectando à nuvem… Verifique sua internet.';
+  }
+}
+
+function refreshUI() {
+  updateSyncStatus();
+  updateCloudBanner();
+  document.getElementById('sync-code-display').value = DataStore.syncId || '';
+
+  if (currentScreen === 'entry') renderEntryAlerts();
+  if (currentScreen === 'table') renderTable();
+  if (currentScreen === 'charts') renderCharts();
+  if (currentScreen === 'alarms') renderAlarmsScreen();
+}
+
 function switchScreen(name) {
+  currentScreen = name;
   document.querySelectorAll('.screen').forEach((el) => el.classList.remove('active'));
   document.querySelectorAll('.tab').forEach((el) => {
     el.classList.toggle('active', el.dataset.screen === name);
     el.setAttribute('aria-selected', el.dataset.screen === name ? 'true' : 'false');
   });
   document.getElementById(`screen-${name}`).classList.add('active');
-
-  if (name === 'table') renderTable();
-  if (name === 'charts') renderCharts();
-  if (name === 'alarms') renderAlarmsScreen();
-  if (name === 'entry') renderEntryAlerts();
+  refreshUI();
 }
 
 function computeAlarmStatus(item, currentKm) {
@@ -130,14 +154,12 @@ function computeAlarmStatus(item, currentKm) {
 }
 
 function getDueMaintenance(maintenance, currentKm) {
-  return maintenance
-    .map((item) => computeAlarmStatus(item, currentKm))
-    .filter((item) => item.due);
+  return maintenance.map((item) => computeAlarmStatus(item, currentKm)).filter((i) => i.due);
 }
 
 function renderEntryAlerts() {
-  const fills = loadFills();
-  const maintenance = loadMaintenance();
+  const fills = getFills();
+  const maintenance = getMaintenance();
   const mileage = latestMileage(fills);
   const panel = document.getElementById('entry-alerts');
   const due = getDueMaintenance(maintenance, mileage);
@@ -158,7 +180,7 @@ function renderEntryAlerts() {
 }
 
 function renderTable() {
-  const fills = enrichFills(loadFills());
+  const fills = enrichFills(getFills());
   const tbody = document.getElementById('data-tbody');
   const empty = document.getElementById('table-empty');
 
@@ -171,8 +193,7 @@ function renderTable() {
   empty.classList.add('hidden');
   tbody.innerHTML = fills
     .map((row) => {
-      const price =
-        row.pricePerLiter != null ? `R$ ${formatNumber(row.pricePerLiter, 3)}` : '—';
+      const price = row.pricePerLiter != null ? `R$ ${formatNumber(row.pricePerLiter, 3)}` : '—';
       const cons = row.consumption != null ? formatNumber(row.consumption, 2) : '—';
       const obsLabel = row.obs?.trim() ? row.obs.trim() : 'Adicionar…';
       const obsClass = row.obs?.trim() ? 'has-note' : '';
@@ -187,28 +208,28 @@ function renderTable() {
         <td class="obs-cell col-end">
           <button type="button" class="btn obs ${obsClass}" data-obs-id="${row.id}" title="Editar observação">${escapeHtml(obsLabel)}</button>
         </td>
-        <td class="col-end"><button type="button" class="btn-icon" data-delete-id="${row.id}" title="Excluir linha">×</button></td>
+        <td class="col-end row-actions">
+          <button type="button" class="btn-icon" data-edit-fill="${row.id}" title="Editar">✎</button>
+          <button type="button" class="btn-icon" data-delete-id="${row.id}" title="Excluir">×</button>
+        </td>
       </tr>`;
     })
     .join('');
 }
 
 function renderAlarmsScreen() {
-  const maintenance = loadMaintenance();
-  const mileage = latestMileage(loadFills());
+  const maintenance = getMaintenance();
+  const mileage = latestMileage(getFills());
   const summaryEl = document.getElementById('alarms-summary');
   const mileageEl = document.getElementById('alarms-mileage');
   const listEl = document.getElementById('alarms-list');
   const emptyEl = document.getElementById('alarms-empty');
   const due = getDueMaintenance(maintenance, mileage);
 
-  if (mileage > 0) {
-    mileageEl.textContent = `Quilometragem atual (último abastecimento): ${formatNumber(mileage)} km`;
-    mileageEl.classList.remove('hidden');
-  } else {
-    mileageEl.textContent = 'Cadastre um abastecimento para calcular os alarmes pela quilometragem.';
-    mileageEl.classList.remove('hidden');
-  }
+  mileageEl.textContent =
+    mileage > 0
+      ? `Quilometragem atual (último abastecimento): ${formatNumber(mileage)} km`
+      : 'Cadastre um abastecimento para calcular os alarmes pela quilometragem.';
 
   if (!maintenance.length) {
     summaryEl.innerHTML = '';
@@ -238,14 +259,9 @@ function renderAlarmsScreen() {
       const status = computeAlarmStatus(item, mileage);
       const statusClass = status.due ? 'due' : '';
       let statusText;
-
-      if (!mileage) {
-        statusText = 'Aguardando abastecimento para calcular.';
-      } else if (status.due) {
-        statusText = `Vencido — ${formatNumber(status.kmOver)} km além do intervalo`;
-      } else {
-        statusText = `Faltam ${formatNumber(status.remaining)} km para a próxima manutenção`;
-      }
+      if (!mileage) statusText = 'Aguardando abastecimento para calcular.';
+      else if (status.due) statusText = `Vencido — ${formatNumber(status.kmOver)} km além do intervalo`;
+      else statusText = `Faltam ${formatNumber(status.remaining)} km para a próxima manutenção`;
 
       return `
         <article class="card alarm-card ${status.due ? 'alarm-due' : ''}" data-alarm-id="${item.id}">
@@ -275,7 +291,7 @@ function destroyCharts() {
 }
 
 function renderCharts() {
-  const enriched = enrichFills(loadFills());
+  const enriched = enrichFills(getFills());
   const emptyEl = document.getElementById('charts-empty');
   const withConsumption = enriched.filter((r) => r.consumption != null);
 
@@ -288,13 +304,11 @@ function renderCharts() {
   emptyEl.classList.add('hidden');
 
   const labels = enriched.map((r) => formatDateTime(r.datetime));
-
   let cumulativeSpent = 0;
   const spentSeries = enriched.map((r) => {
     cumulativeSpent += r.amount;
     return cumulativeSpent;
   });
-
   const baseMileage = enriched[0].mileage;
   const accumulatedDistance = enriched.map((r) => r.mileage - baseMileage);
 
@@ -303,126 +317,56 @@ function renderCharts() {
     maintainAspectRatio: true,
     plugins: { legend: { display: false } },
     scales: {
-      x: {
-        ticks: { color: '#8b9cb3', maxRotation: 45 },
-        grid: { color: 'rgba(45,58,79,0.5)' },
-      },
-      y: {
-        ticks: { color: '#8b9cb3' },
-        grid: { color: 'rgba(45,58,79,0.5)' },
-      },
+      x: { ticks: { color: '#8b9cb3', maxRotation: 45 }, grid: { color: 'rgba(45,58,79,0.5)' } },
+      y: { ticks: { color: '#8b9cb3' }, grid: { color: 'rgba(45,58,79,0.5)' } },
     },
   };
 
   if (withConsumption.length) {
-    const consLabels = withConsumption.map((r) => formatDateTime(r.datetime));
-    const consData = withConsumption.map((r) => r.consumption);
-
-    chartInstances.consumption = new Chart(
-      document.getElementById('chart-consumption'),
-      {
-        type: 'line',
-        data: {
-          labels: consLabels,
-          datasets: [
-            {
-              data: consData,
-              borderColor: '#3d9eff',
-              backgroundColor: 'rgba(61,158,255,0.15)',
-              fill: true,
-              tension: 0.2,
-            },
-          ],
-        },
-        options: {
-          ...chartDefaults,
-          scales: {
-            ...chartDefaults.scales,
-            y: {
-              ...chartDefaults.scales.y,
-              title: { display: true, text: 'km/L', color: '#8b9cb3' },
-            },
-          },
-        },
-      }
-    );
+    chartInstances.consumption = new Chart(document.getElementById('chart-consumption'), {
+      type: 'line',
+      data: {
+        labels: withConsumption.map((r) => formatDateTime(r.datetime)),
+        datasets: [{
+          data: withConsumption.map((r) => r.consumption),
+          borderColor: '#3d9eff',
+          backgroundColor: 'rgba(61,158,255,0.15)',
+          fill: true,
+          tension: 0.2,
+        }],
+      },
+      options: {
+        ...chartDefaults,
+        scales: { ...chartDefaults.scales, y: { ...chartDefaults.scales.y, title: { display: true, text: 'km/L', color: '#8b9cb3' } } },
+      },
+    });
   }
 
   chartInstances.price = new Chart(document.getElementById('chart-price'), {
     type: 'line',
     data: {
       labels,
-      datasets: [
-        {
-          data: enriched.map((r) => r.pricePerLiter),
-          borderColor: '#f5b942',
-          backgroundColor: 'rgba(245,185,66,0.12)',
-          fill: true,
-          tension: 0.2,
-        },
-      ],
+      datasets: [{ data: enriched.map((r) => r.pricePerLiter), borderColor: '#f5b942', backgroundColor: 'rgba(245,185,66,0.12)', fill: true, tension: 0.2 }],
     },
-    options: {
-      ...chartDefaults,
-      scales: {
-        ...chartDefaults.scales,
-        y: {
-          ...chartDefaults.scales.y,
-          title: { display: true, text: 'R$', color: '#8b9cb3' },
-        },
-      },
-    },
+    options: { ...chartDefaults, scales: { ...chartDefaults.scales, y: { ...chartDefaults.scales.y, title: { display: true, text: 'R$', color: '#8b9cb3' } } } },
   });
 
   chartInstances.distance = new Chart(document.getElementById('chart-distance'), {
     type: 'line',
     data: {
       labels,
-      datasets: [
-        {
-          data: accumulatedDistance,
-          borderColor: '#3dd68c',
-          backgroundColor: 'rgba(61,214,140,0.12)',
-          fill: true,
-          tension: 0.2,
-        },
-      ],
+      datasets: [{ data: accumulatedDistance, borderColor: '#3dd68c', backgroundColor: 'rgba(61,214,140,0.12)', fill: true, tension: 0.2 }],
     },
-    options: {
-      ...chartDefaults,
-      scales: {
-        ...chartDefaults.scales,
-        y: {
-          ...chartDefaults.scales.y,
-          title: { display: true, text: 'km', color: '#8b9cb3' },
-        },
-      },
-    },
+    options: { ...chartDefaults, scales: { ...chartDefaults.scales, y: { ...chartDefaults.scales.y, title: { display: true, text: 'km', color: '#8b9cb3' } } } },
   });
 
   chartInstances.spent = new Chart(document.getElementById('chart-spent'), {
     type: 'bar',
     data: {
       labels,
-      datasets: [
-        {
-          data: spentSeries,
-          backgroundColor: 'rgba(240,113,120,0.6)',
-          borderColor: '#f07178',
-          borderWidth: 1,
-        },
-      ],
+      datasets: [{ data: spentSeries, backgroundColor: 'rgba(240,113,120,0.6)', borderColor: '#f07178', borderWidth: 1 }],
     },
-    options: {
-      ...chartDefaults,
-      scales: {
-        ...chartDefaults.scales,
-        y: {
-          ...chartDefaults.scales.y,
-          title: { display: true, text: 'R$', color: '#8b9cb3' },
-        },
-      },
-    },
+    options: { ...chartDefaults, scales: { ...chartDefaults.scales, y: { ...chartDefaults.scales.y, title: { display: true, text: 'R$', color: '#8b9cb3' } } } },
   });
 }
 
@@ -433,25 +377,89 @@ function escapeHtml(str) {
 }
 
 function openObsDialog(id) {
-  const fills = loadFills();
-  const fill = fills.find((f) => f.id === id);
+  const fill = getFills().find((f) => f.id === id);
   if (!fill) return;
-
   editingObsId = id;
   document.getElementById('obs-meta').textContent = `${formatDateTime(fill.datetime)} — ${formatNumber(fill.mileage)} km`;
   document.getElementById('obs-text').value = fill.obs || '';
   document.getElementById('obs-dialog').showModal();
 }
 
-function saveObs(text) {
+async function saveObs(text) {
   if (!editingObsId) return;
-  const fills = loadFills();
-  const idx = fills.findIndex((f) => f.id === editingObsId);
+  const idx = DataStore.fills.findIndex((f) => f.id === editingObsId);
   if (idx === -1) return;
-  fills[idx].obs = text.trim();
-  saveFills(fills);
+  DataStore.fills[idx].obs = text.trim();
+  await DataStore.persist();
   editingObsId = null;
   renderTable();
+}
+
+function openFillDialog(id = null) {
+  editingFillId = id;
+  const title = document.getElementById('fill-dialog-title');
+  const dt = document.getElementById('fill-datetime');
+  const km = document.getElementById('fill-mileage');
+  const L = document.getElementById('fill-liters');
+  const amt = document.getElementById('fill-amount');
+
+  if (id) {
+    const fill = getFills().find((f) => f.id === id);
+    if (!fill) return;
+    title.textContent = 'Editar abastecimento';
+    const d = new Date(fill.datetime);
+    d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+    dt.value = d.toISOString().slice(0, 16);
+    km.value = fill.mileage;
+    L.value = fill.liters;
+    amt.value = fill.amount;
+  } else {
+    title.textContent = 'Adicionar ao histórico';
+    initDatetimeInput(dt);
+    km.value = '';
+    L.value = '';
+    amt.value = '';
+  }
+
+  document.getElementById('fill-dialog').showModal();
+}
+
+async function saveFillFromDialog() {
+  const datetime = document.getElementById('fill-datetime').value;
+  const mileage = parseFloat(document.getElementById('fill-mileage').value);
+  const liters = parseFloat(document.getElementById('fill-liters').value);
+  const amount = parseFloat(document.getElementById('fill-amount').value);
+
+  if (mileage < 0 || liters <= 0 || amount <= 0) {
+    alert('Verifique a quilometragem, os litros e o valor pago.');
+    return false;
+  }
+
+  const record = {
+    id: editingFillId || crypto.randomUUID(),
+    datetime: new Date(datetime).toISOString(),
+    mileage,
+    liters,
+    amount,
+    obs: editingFillId ? getFills().find((f) => f.id === editingFillId)?.obs || '' : '',
+  };
+
+  if (editingFillId) {
+    const idx = DataStore.fills.findIndex((f) => f.id === editingFillId);
+    if (idx !== -1) DataStore.fills[idx] = record;
+  } else {
+    DataStore.fills.push(record);
+  }
+
+  try {
+    await DataStore.persist();
+    editingFillId = null;
+    refreshUI();
+    return true;
+  } catch (e) {
+    alert(e.message || 'Erro ao salvar.');
+    return false;
+  }
 }
 
 function openAlarmDialog(id = null) {
@@ -462,7 +470,7 @@ function openAlarmDialog(id = null) {
   const lastInput = document.getElementById('alarm-last-service');
 
   if (id) {
-    const item = loadMaintenance().find((a) => a.id === id);
+    const item = getMaintenance().find((a) => a.id === id);
     if (!item) return;
     title.textContent = 'Editar alarme';
     labelInput.value = item.label;
@@ -479,74 +487,51 @@ function openAlarmDialog(id = null) {
   labelInput.focus();
 }
 
-function saveAlarmFromForm() {
+async function saveAlarmFromForm() {
   const label = document.getElementById('alarm-label').value.trim();
   const intervalKm = parseFloat(document.getElementById('alarm-interval').value);
   const lastServiceKm = parseFloat(document.getElementById('alarm-last-service').value);
 
-  if (!label) {
-    alert('Informe o nome do alarme.');
-    return false;
-  }
-  if (!intervalKm || intervalKm < 100) {
-    alert('O intervalo deve ser de pelo menos 100 km.');
-    return false;
-  }
-  if (lastServiceKm < 0 || Number.isNaN(lastServiceKm)) {
-    alert('Informe a quilometragem da última manutenção.');
-    return false;
-  }
+  if (!label) { alert('Informe o nome do alarme.'); return false; }
+  if (!intervalKm || intervalKm < 100) { alert('O intervalo deve ser de pelo menos 100 km.'); return false; }
+  if (lastServiceKm < 0 || Number.isNaN(lastServiceKm)) { alert('Informe a quilometragem da última manutenção.'); return false; }
 
-  const items = loadMaintenance();
+  const items = [...getMaintenance()];
 
   if (editingAlarmId) {
     const idx = items.findIndex((a) => a.id === editingAlarmId);
     if (idx === -1) return false;
     items[idx] = { ...items[idx], label, intervalKm, lastServiceKm };
   } else {
-    items.push({
-      id: crypto.randomUUID(),
-      label,
-      intervalKm,
-      lastServiceKm,
-    });
+    items.push({ id: crypto.randomUUID(), label, intervalKm, lastServiceKm });
   }
 
-  saveMaintenance(items);
+  await persistMaintenance(items);
   editingAlarmId = null;
-  renderAlarmsScreen();
-  renderEntryAlerts();
+  refreshUI();
   return true;
 }
 
-function deleteAlarm(id) {
-  saveMaintenance(loadMaintenance().filter((a) => a.id !== id));
-  renderAlarmsScreen();
-  renderEntryAlerts();
+async function deleteAlarm(id) {
+  await persistMaintenance(getMaintenance().filter((a) => a.id !== id));
+  refreshUI();
 }
 
-function markAlarmDone(id) {
-  const mileage = latestMileage(loadFills());
+async function markAlarmDone(id) {
+  const mileage = latestMileage(getFills());
   if (!mileage) {
     alert('Cadastre um abastecimento primeiro para obter a quilometragem atual.');
     return;
   }
-  const items = loadMaintenance();
+  const items = [...getMaintenance()];
   const idx = items.findIndex((a) => a.id === id);
   if (idx === -1) return;
   items[idx].lastServiceKm = mileage;
-  saveMaintenance(items);
-  renderAlarmsScreen();
-  renderEntryAlerts();
+  await persistMaintenance(items);
+  refreshUI();
 }
 
-document.querySelectorAll('.tab').forEach((tab) => {
-  tab.addEventListener('click', () => switchScreen(tab.dataset.screen));
-});
-
-document.getElementById('entry-form').addEventListener('submit', (e) => {
-  e.preventDefault();
-
+async function saveFillEntry(formEl, isQuickEntry) {
   const datetime = document.getElementById('field-datetime').value;
   const mileage = parseFloat(document.getElementById('field-mileage').value);
   const liters = parseFloat(document.getElementById('field-liters').value);
@@ -557,13 +542,13 @@ document.getElementById('entry-form').addEventListener('submit', (e) => {
     return;
   }
 
-  const fills = loadFills();
-  const last = sortFills(fills).at(-1);
+  const sorted = sortFills(getFills());
+  const last = sorted.at(-1);
   if (last && mileage < last.mileage) {
     if (!confirm('A quilometragem é menor que o registro anterior. Salvar mesmo assim?')) return;
   }
 
-  fills.push({
+  DataStore.fills.push({
     id: crypto.randomUUID(),
     datetime: new Date(datetime).toISOString(),
     mileage,
@@ -572,37 +557,91 @@ document.getElementById('entry-form').addEventListener('submit', (e) => {
     obs: '',
   });
 
-  saveFills(fills);
-  e.target.reset();
-  initDatetimeDefault();
-  renderEntryAlerts();
+  try {
+    await DataStore.persist();
+    formEl.reset();
+    initDatetimeInput(document.getElementById('field-datetime'));
+    refreshUI();
 
-  const btn = e.target.querySelector('button[type="submit"]');
-  const orig = btn.textContent;
-  btn.textContent = 'Salvo ✓';
-  setTimeout(() => {
-    btn.textContent = orig;
-  }, 1500);
+    const btn = formEl.querySelector('button[type="submit"]');
+    const orig = btn.textContent;
+    btn.textContent = 'Salvo ✓';
+    setTimeout(() => { btn.textContent = orig; }, 1500);
+  } catch (e) {
+    alert(e.message || 'Erro ao salvar. Tente a aba Conta → Exportar backup.');
+  }
+}
+
+function exportBackup() {
+  const payload = {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    syncId: DataStore.syncId,
+    fills: getFills(),
+    maintenance: getMaintenance(),
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `carro-kpi-backup-${DataStore.syncId || 'local'}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+async function importBackup(file) {
+  const text = await file.text();
+  const data = JSON.parse(text);
+  if (!data.fills || !Array.isArray(data.fills)) throw new Error('Arquivo inválido');
+
+  if (
+    getFills().length &&
+    !confirm('Importar vai mesclar com os dados atuais. Continuar?')
+  ) return;
+
+  DataStore.fills = DataStore.mergeById(getFills(), data.fills);
+  if (data.maintenance?.length) {
+    DataStore.maintenance = DataStore.mergeById(getMaintenance(), data.maintenance);
+  }
+  if (data.syncId) DataStore.setSyncId(data.syncId);
+
+  await DataStore.persist();
+  refreshUI();
+  alert('Backup importado com sucesso.');
+}
+
+document.querySelectorAll('.tab').forEach((tab) => {
+  tab.addEventListener('click', () => switchScreen(tab.dataset.screen));
 });
 
-document.getElementById('data-tbody').addEventListener('click', (e) => {
+document.getElementById('entry-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  saveFillEntry(e.target);
+});
+
+document.getElementById('btn-add-history').addEventListener('click', () => openFillDialog());
+
+document.getElementById('data-tbody').addEventListener('click', async (e) => {
   const obsBtn = e.target.closest('[data-obs-id]');
-  if (obsBtn) {
-    openObsDialog(obsBtn.dataset.obsId);
-    return;
-  }
+  if (obsBtn) { openObsDialog(obsBtn.dataset.obsId); return; }
+
+  const editBtn = e.target.closest('[data-edit-fill]');
+  if (editBtn) { openFillDialog(editBtn.dataset.editFill); return; }
+
   const delBtn = e.target.closest('[data-delete-id]');
   if (delBtn && confirm('Excluir este abastecimento?')) {
-    const id = delBtn.dataset.deleteId;
-    saveFills(loadFills().filter((f) => f.id !== id));
-    renderTable();
-    renderEntryAlerts();
+    DataStore.fills = getFills().filter((f) => f.id !== delBtn.dataset.deleteId);
+    try {
+      await DataStore.persist();
+      refreshUI();
+    } catch (err) {
+      alert(err.message);
+    }
   }
 });
 
-document.getElementById('obs-form').addEventListener('submit', (e) => {
+document.getElementById('obs-form').addEventListener('submit', async (e) => {
   e.preventDefault();
-  saveObs(document.getElementById('obs-text').value);
+  await saveObs(document.getElementById('obs-text').value);
   document.getElementById('obs-dialog').close();
 });
 
@@ -611,13 +650,21 @@ document.getElementById('obs-cancel').addEventListener('click', () => {
   document.getElementById('obs-dialog').close();
 });
 
+document.getElementById('fill-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (await saveFillFromDialog()) document.getElementById('fill-dialog').close();
+});
+
+document.getElementById('fill-cancel').addEventListener('click', () => {
+  editingFillId = null;
+  document.getElementById('fill-dialog').close();
+});
+
 document.getElementById('btn-add-alarm').addEventListener('click', () => openAlarmDialog());
 
-document.getElementById('alarm-form').addEventListener('submit', (e) => {
+document.getElementById('alarm-form').addEventListener('submit', async (e) => {
   e.preventDefault();
-  if (saveAlarmFromForm()) {
-    document.getElementById('alarm-dialog').close();
-  }
+  if (await saveAlarmFromForm()) document.getElementById('alarm-dialog').close();
 });
 
 document.getElementById('alarm-cancel').addEventListener('click', () => {
@@ -627,28 +674,85 @@ document.getElementById('alarm-cancel').addEventListener('click', () => {
 
 document.getElementById('alarms-list').addEventListener('click', (e) => {
   const editBtn = e.target.closest('[data-edit-alarm]');
-  if (editBtn) {
-    openAlarmDialog(editBtn.dataset.editAlarm);
-    return;
-  }
+  if (editBtn) { openAlarmDialog(editBtn.dataset.editAlarm); return; }
   const delBtn = e.target.closest('[data-delete-alarm]');
-  if (delBtn && confirm('Excluir este alarme?')) {
-    deleteAlarm(delBtn.dataset.deleteAlarm);
-    return;
-  }
+  if (delBtn && confirm('Excluir este alarme?')) deleteAlarm(delBtn.dataset.deleteAlarm);
   const markBtn = e.target.closest('[data-mark-done]');
-  if (markBtn) {
-    markAlarmDone(markBtn.dataset.markDone);
-  }
+  if (markBtn) markAlarmDone(markBtn.dataset.markDone);
 });
 
 document.getElementById('entry-alerts').addEventListener('click', (e) => {
   const link = e.target.closest('[data-goto-alarms]');
-  if (link) {
-    e.preventDefault();
-    switchScreen('alarms');
+  if (link) { e.preventDefault(); switchScreen('alarms'); }
+});
+
+document.getElementById('btn-copy-sync').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(DataStore.syncId);
+    alert('Código copiado!');
+  } catch {
+    alert(`Seu código: ${DataStore.syncId}`);
   }
 });
 
-initDatetimeDefault();
-renderEntryAlerts();
+document.getElementById('btn-connect-sync').addEventListener('click', async () => {
+  try {
+    const code = document.getElementById('sync-code-input').value;
+    if (!confirm('Trocar o código substitui os dados locais pelos da nuvem deste código. Continuar?')) return;
+    await DataStore.switchAccount(code);
+    document.getElementById('sync-code-input').value = '';
+    refreshUI();
+    alert('Conectado! Seus dados devem aparecer em instantes.');
+  } catch (e) {
+    alert(e.message);
+  }
+});
+
+document.getElementById('btn-sync-now').addEventListener('click', async () => {
+  try {
+    if (!DataStore.cloudEnabled) {
+      alert('Configure o Firebase primeiro (veja SETUP-FIREBASE.md).');
+      return;
+    }
+    await DataStore.pushToCloud();
+    alert('Sincronizado!');
+  } catch (e) {
+    alert('Falha na sincronização: ' + (e.message || e));
+  }
+});
+
+document.getElementById('btn-export-data').addEventListener('click', exportBackup);
+
+document.getElementById('import-file').addEventListener('change', async (e) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  try {
+    await importBackup(file);
+  } catch (err) {
+    alert('Erro ao importar: ' + err.message);
+  }
+  e.target.value = '';
+});
+
+async function bootstrap() {
+  DataStore.onChange(() => refreshUI());
+
+  try {
+    await DataStore.init();
+  } catch (e) {
+    console.error(e);
+    alert('Erro ao conectar à nuvem. Os dados continuam salvos neste aparelho.');
+  }
+
+  if (!DataStore.maintenance.length) {
+    DataStore.maintenance = structuredClone(DEFAULT_MAINTENANCE);
+    try {
+      await DataStore.persist();
+    } catch { /* ignore */ }
+  }
+
+  initDatetimeInput(document.getElementById('field-datetime'));
+  refreshUI();
+}
+
+bootstrap();

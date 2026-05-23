@@ -39,10 +39,21 @@ body {
 }
 
 .app-header h1 {
-  margin: 0 0 0.75rem;
+  margin: 0 0 0.35rem;
   font-size: 1.35rem;
   font-weight: 600;
 }
+
+.sync-status {
+  margin: 0 0 0.6rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.sync-status.ok { color: var(--success); }
+.sync-status.local { color: var(--muted); }
+.sync-status.warn { color: var(--warning); }
+.sync-status.syncing { color: var(--accent); }
 
 .tabs {
   display: flex;
@@ -51,12 +62,13 @@ body {
 
 .tab {
   flex: 1;
-  padding: 0.65rem 0.35rem;
+  min-width: 0;
+  padding: 0.65rem 0.25rem;
   border: none;
   border-radius: var(--radius) var(--radius) 0 0;
   background: transparent;
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: 0.72rem;
   font-weight: 500;
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
@@ -229,9 +241,103 @@ textarea:focus {
   border-color: var(--success);
 }
 
+.table-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.table-actions .hint {
+  margin: 0;
+  flex: 1;
+  min-width: 200px;
+}
+
 .table-wrap {
   overflow-x: auto;
   padding: 0;
+}
+
+.row-actions {
+  display: flex;
+  gap: 0.15rem;
+}
+
+.sync-code-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+}
+
+.sync-code-row input {
+  flex: 1;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.95rem;
+  font-family: ui-monospace, monospace;
+  letter-spacing: 0.05em;
+}
+
+.sync-code-label {
+  margin-bottom: 1.25rem;
+}
+
+.account-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+
+.account-footnote {
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin: 0;
+  line-height: 1.45;
+}
+
+.file-btn {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+}
+
+#fill-dialog,
+#alarm-dialog {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0;
+  background: var(--surface);
+  color: var(--text);
+  max-width: 420px;
+  width: calc(100% - 2rem);
+}
+
+#fill-dialog::backdrop,
+#alarm-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.6);
+}
+
+#fill-form {
+  padding: 1.25rem;
+}
+
+#fill-form h3 {
+  margin: 0 0 1rem;
+}
+
+.alert.hidden {
+  display: none;
+}
+
+.alert code {
+  font-size: 0.85em;
 }
 
 table {

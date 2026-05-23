@@ -9,15 +9,19 @@
   <title>Controle do Carro — KPIs</title>
   <link rel="stylesheet" href="styles.css" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 </head>
 <body>
   <header class="app-header">
     <h1>Controle do Carro</h1>
+    <p id="sync-status" class="sync-status" aria-live="polite"></p>
     <nav class="tabs" role="tablist">
       <button type="button" class="tab active" data-screen="entry" role="tab" aria-selected="true">Abastecimento</button>
       <button type="button" class="tab" data-screen="table" role="tab">Dados</button>
       <button type="button" class="tab" data-screen="charts" role="tab">KPIs</button>
       <button type="button" class="tab" data-screen="alarms" role="tab">Alarmes</button>
+      <button type="button" class="tab" data-screen="account" role="tab">Conta</button>
     </nav>
   </header>
 
@@ -41,13 +45,16 @@
           Valor total pago (R$)
           <input type="number" id="field-amount" min="0.01" step="0.01" required placeholder="ex.: 278,50" />
         </label>
-        <button type="submit" class="btn primary">Salvar abastecimento</button>
+        <button type="submit" class="btn primary" id="entry-submit">Salvar abastecimento</button>
       </form>
       <div id="entry-alerts" class="alerts-panel"></div>
     </section>
 
     <section id="screen-table" class="screen">
-      <p class="hint">Toque em <strong>OBS</strong> na linha para anotar viagens, manutenção, etc.</p>
+      <div class="table-actions">
+        <p class="hint">Toque em <strong>OBS</strong> para anotar. Use <strong>Editar</strong> para corrigir ou incluir histórico.</p>
+        <button type="button" class="btn secondary btn-sm" id="btn-add-history">+ Adicionar ao histórico</button>
+      </div>
       <div class="table-wrap card">
         <table id="data-table">
           <thead>
@@ -59,13 +66,13 @@
               <th>R$/L</th>
               <th>km/L</th>
               <th class="col-end">OBS</th>
-              <th class="col-end" aria-label="Excluir"></th>
+              <th class="col-end">Ações</th>
             </tr>
           </thead>
           <tbody id="data-tbody"></tbody>
         </table>
         <p id="table-empty" class="empty-state">Nenhum abastecimento ainda. Cadastre o primeiro na aba Abastecimento.</p>
-        <p class="table-footnote">R$/L = valor ÷ litros · km/L = (km atual − km anterior) ÷ litros · Toque em OBS para anotações · × remove o registro</p>
+        <p class="table-footnote">R$/L = valor ÷ litros · km/L = (km atual − km anterior) ÷ litros · Toque em OBS para anotações</p>
       </div>
     </section>
 
@@ -99,12 +106,46 @@
         </div>
         <button type="button" class="btn primary alarms-add-btn" id="btn-add-alarm">+ Novo alarme</button>
       </div>
-
       <div id="alarms-summary" class="alerts-list"></div>
       <p id="alarms-mileage" class="mileage-badge"></p>
-
       <div id="alarms-list" class="alarms-list"></div>
       <p id="alarms-empty" class="empty-state hidden">Nenhum alarme cadastrado. Clique em &quot;Novo alarme&quot; para começar.</p>
+    </section>
+
+    <section id="screen-account" class="screen">
+      <div class="card">
+        <h2>Sincronização entre dispositivos</h2>
+        <p class="hint">Use o mesmo código no celular e no computador para ver o mesmo histórico.</p>
+
+        <div id="cloud-banner" class="alert warning hidden"></div>
+
+        <label class="sync-code-label">
+          Seu código de sincronização
+          <div class="sync-code-row">
+            <input type="text" id="sync-code-display" readonly />
+            <button type="button" class="btn secondary btn-sm" id="btn-copy-sync">Copiar</button>
+          </div>
+        </label>
+
+        <label>
+          Conectar outro dispositivo (cole o código)
+          <div class="sync-code-row">
+            <input type="text" id="sync-code-input" placeholder="XXXX-XXXX-XXXX" autocapitalize="characters" />
+            <button type="button" class="btn primary btn-sm" id="btn-connect-sync">Conectar</button>
+          </div>
+        </label>
+
+        <div class="account-actions">
+          <button type="button" class="btn secondary btn-sm" id="btn-sync-now">Sincronizar agora</button>
+          <button type="button" class="btn secondary btn-sm" id="btn-export-data">Exportar backup</button>
+          <label class="btn secondary btn-sm file-btn">
+            Importar backup
+            <input type="file" id="import-file" accept="application/json" hidden />
+          </label>
+        </div>
+
+        <p class="account-footnote">Os dados são salvos neste aparelho e copiados para a nuvem (Firebase) quando configurado. Sem nuvem, use exportar/importar entre aparelhos.</p>
+      </div>
     </section>
   </main>
 
@@ -116,6 +157,32 @@
       <div class="dialog-actions">
         <button type="button" class="btn secondary" id="obs-cancel">Cancelar</button>
         <button type="submit" class="btn primary">Salvar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="fill-dialog">
+    <form method="dialog" id="fill-form">
+      <h3 id="fill-dialog-title">Adicionar ao histórico</h3>
+      <label>
+        Data e hora
+        <input type="datetime-local" id="fill-datetime" required />
+      </label>
+      <label>
+        Quilometragem total (km)
+        <input type="number" id="fill-mileage" min="0" step="1" required />
+      </label>
+      <label>
+        Litros
+        <input type="number" id="fill-liters" min="0.01" step="0.01" required />
+      </label>
+      <label>
+        Valor total pago (R$)
+        <input type="number" id="fill-amount" min="0.01" step="0.01" required />
+      </label>
+      <div class="dialog-actions">
+        <button type="button" class="btn secondary" id="fill-cancel">Cancelar</button>
+        <button type="submit" class="btn primary" id="fill-submit">Salvar</button>
       </div>
     </form>
   </dialog>
@@ -142,6 +209,8 @@
     </form>
   </dialog>
 
+  <script src="firebase-config.js"></script>
+  <script src="sync.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

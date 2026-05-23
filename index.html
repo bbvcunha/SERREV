@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#1a2332" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Carro KPI" />
+  <title>Controle do Carro — KPIs</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <header class="app-header">
+    <h1>Controle do Carro</h1>
+    <nav class="tabs" role="tablist">
+      <button type="button" class="tab active" data-screen="entry" role="tab" aria-selected="true">Abastecimento</button>
+      <button type="button" class="tab" data-screen="table" role="tab">Dados</button>
+      <button type="button" class="tab" data-screen="charts" role="tab">KPIs</button>
+      <button type="button" class="tab" data-screen="alarms" role="tab">Alarmes</button>
+    </nav>
+  </header>
+
+  <main>
+    <section id="screen-entry" class="screen active">
+      <p class="hint">Registre logo após abastecer o tanque.</p>
+      <form id="entry-form" class="card">
+        <label>
+          Data e hora
+          <input type="datetime-local" id="field-datetime" required />
+        </label>
+        <label>
+          Quilometragem total (km)
+          <input type="number" id="field-mileage" min="0" step="1" required placeholder="ex.: 125430" />
+        </label>
+        <label>
+          Litros
+          <input type="number" id="field-liters" min="0.01" step="0.01" required placeholder="ex.: 45,2" />
+        </label>
+        <label>
+          Valor total pago (R$)
+          <input type="number" id="field-amount" min="0.01" step="0.01" required placeholder="ex.: 278,50" />
+        </label>
+        <button type="submit" class="btn primary">Salvar abastecimento</button>
+      </form>
+      <div id="entry-alerts" class="alerts-panel"></div>
+    </section>
+
+    <section id="screen-table" class="screen">
+      <p class="hint">Toque em <strong>OBS</strong> na linha para anotar viagens, manutenção, etc.</p>
+      <div class="table-wrap card">
+        <table id="data-table">
+          <thead>
+            <tr>
+              <th>Data / hora</th>
+              <th>Km total</th>
+              <th>Litros</th>
+              <th>Valor (R$)</th>
+              <th>R$/L</th>
+              <th>km/L</th>
+              <th class="col-end">OBS</th>
+              <th class="col-end" aria-label="Excluir"></th>
+            </tr>
+          </thead>
+          <tbody id="data-tbody"></tbody>
+        </table>
+        <p id="table-empty" class="empty-state">Nenhum abastecimento ainda. Cadastre o primeiro na aba Abastecimento.</p>
+        <p class="table-footnote">R$/L = valor ÷ litros · km/L = (km atual − km anterior) ÷ litros · Toque em OBS para anotações · × remove o registro</p>
+      </div>
+    </section>
+
+    <section id="screen-charts" class="screen">
+      <div class="charts-grid">
+        <div class="card chart-card">
+          <h3>Consumo (km/L)</h3>
+          <canvas id="chart-consumption"></canvas>
+        </div>
+        <div class="card chart-card">
+          <h3>Preço por litro (R$)</h3>
+          <canvas id="chart-price"></canvas>
+        </div>
+        <div class="card chart-card">
+          <h3>Distância acumulada (km)</h3>
+          <canvas id="chart-distance"></canvas>
+        </div>
+        <div class="card chart-card">
+          <h3>Gasto com combustível (acumulado)</h3>
+          <canvas id="chart-spent"></canvas>
+        </div>
+      </div>
+      <p id="charts-empty" class="empty-state">Cadastre pelo menos dois abastecimentos para ver os gráficos de consumo.</p>
+    </section>
+
+    <section id="screen-alarms" class="screen">
+      <div class="alarms-header">
+        <div>
+          <h2>Alarmes de manutenção</h2>
+          <p class="hint">Com base na quilometragem do último abastecimento. Adicione, edite ou exclua alarmes.</p>
+        </div>
+        <button type="button" class="btn primary alarms-add-btn" id="btn-add-alarm">+ Novo alarme</button>
+      </div>
+
+      <div id="alarms-summary" class="alerts-list"></div>
+      <p id="alarms-mileage" class="mileage-badge"></p>
+
+      <div id="alarms-list" class="alarms-list"></div>
+      <p id="alarms-empty" class="empty-state hidden">Nenhum alarme cadastrado. Clique em &quot;Novo alarme&quot; para começar.</p>
+    </section>
+  </main>
+
+  <dialog id="obs-dialog">
+    <form method="dialog" id="obs-form">
+      <h3>Observação</h3>
+      <p class="obs-meta" id="obs-meta"></p>
+      <textarea id="obs-text" rows="5" placeholder="ex.: Viagem longa para a praia, troca de óleo aos 120.000 km…"></textarea>
+      <div class="dialog-actions">
+        <button type="button" class="btn secondary" id="obs-cancel">Cancelar</button>
+        <button type="submit" class="btn primary">Salvar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="alarm-dialog">
+    <form method="dialog" id="alarm-form">
+      <h3 id="alarm-dialog-title">Novo alarme</h3>
+      <label>
+        Nome do alarme
+        <input type="text" id="alarm-label" required maxlength="80" placeholder="ex.: Troca de óleo" />
+      </label>
+      <label>
+        Intervalo (km)
+        <input type="number" id="alarm-interval" min="100" step="100" required placeholder="ex.: 10000" />
+      </label>
+      <label>
+        Última manutenção em (km)
+        <input type="number" id="alarm-last-service" min="0" step="1" required value="0" />
+      </label>
+      <div class="dialog-actions">
+        <button type="button" class="btn secondary" id="alarm-cancel">Cancelar</button>
+        <button type="submit" class="btn primary">Salvar alarme</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>

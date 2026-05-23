@@ -1,0 +1,516 @@
+:root {
+  --bg: #0f1419;
+  --surface: #1a2332;
+  --surface2: #243044;
+  --text: #e8edf4;
+  --muted: #8b9cb3;
+  --accent: #3d9eff;
+  --accent-hover: #5eb0ff;
+  --success: #3dd68c;
+  --warning: #f5b942;
+  --danger: #f07178;
+  --border: #2d3a4f;
+  --radius: 10px;
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 1rem 1.25rem 0;
+}
+
+.app-header h1 {
+  margin: 0 0 0.75rem;
+  font-size: 1.35rem;
+  font-weight: 600;
+}
+
+.tabs {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.tab {
+  flex: 1;
+  padding: 0.65rem 0.35rem;
+  border: none;
+  border-radius: var(--radius) var(--radius) 0 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+@media (min-width: 480px) {
+  .tab {
+    font-size: 0.9rem;
+    padding: 0.65rem 0.5rem;
+  }
+}
+
+.tab:hover {
+  color: var(--text);
+  background: var(--surface2);
+}
+
+.tab.active {
+  color: var(--accent);
+  background: var(--bg);
+  border-bottom: 2px solid var(--accent);
+}
+
+main {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1.25rem;
+}
+
+.screen {
+  display: none;
+}
+
+.screen.active {
+  display: block;
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin: 0 0 1rem;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+}
+
+label {
+  display: block;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+label input[type="number"],
+label input[type="datetime-local"],
+label input[type="text"],
+textarea {
+  display: block;
+  width: 100%;
+  margin-top: 0.35rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 1rem;
+}
+
+label input:focus,
+textarea:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.currency-fieldset {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.currency-fieldset legend {
+  font-size: 0.85rem;
+  color: var(--muted);
+  padding: 0 0.25rem;
+}
+
+.currency-fieldset input {
+  width: 5rem;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.currency-hint {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-weight: 400;
+  margin-top: 0.2rem;
+}
+
+.btn {
+  padding: 0.65rem 1.1rem;
+  border-radius: 8px;
+  border: none;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+}
+
+.btn:active {
+  transform: scale(0.98);
+}
+
+.btn.primary {
+  background: var(--accent);
+  color: #0a1628;
+  width: 100%;
+}
+
+.btn.primary:hover {
+  background: var(--accent-hover);
+}
+
+.btn.secondary {
+  background: var(--surface2);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.btn.secondary:hover {
+  background: var(--border);
+}
+
+.btn.danger-outline {
+  background: transparent;
+  color: var(--danger);
+  border: 1px solid var(--danger);
+  font-size: 0.85rem;
+  padding: 0.45rem 0.75rem;
+}
+
+.btn.danger-outline:hover {
+  background: rgba(240, 113, 120, 0.12);
+}
+
+.btn.obs {
+  background: var(--surface2);
+  color: var(--accent);
+  border: 1px dashed var(--accent);
+  padding: 0.35rem 0.6rem;
+  font-size: 0.8rem;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.btn.obs.has-note {
+  border-style: solid;
+  color: var(--success);
+  border-color: var(--success);
+}
+
+.table-wrap {
+  overflow-x: auto;
+  padding: 0;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+th,
+td {
+  padding: 0.65rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+th {
+  background: var(--surface2);
+  color: var(--muted);
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+}
+
+tbody tr:hover {
+  background: rgba(61, 158, 255, 0.06);
+}
+
+td.obs-cell {
+  max-width: 140px;
+}
+
+th.col-end,
+td.col-end {
+  font-size: 0.72rem;
+}
+
+.table-footnote {
+  margin: 0;
+  padding: 0.5rem 0.75rem 0.85rem;
+  font-size: 0.68rem;
+  line-height: 1.45;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+}
+
+.empty-state {
+  text-align: center;
+  color: var(--muted);
+  padding: 2rem 1rem;
+}
+
+.empty-state.hidden {
+  display: none;
+}
+
+.alerts-panel,
+.alerts-list {
+  margin-top: 1rem;
+}
+
+.alert {
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.alert.warning {
+  background: rgba(245, 185, 66, 0.15);
+  border: 1px solid var(--warning);
+  color: #ffe9b0;
+}
+
+.alert.ok {
+  background: rgba(61, 214, 140, 0.12);
+  border: 1px solid var(--success);
+  color: #b8f5d8;
+}
+
+.alarms-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.alarms-header h2 {
+  margin: 0 0 0.35rem;
+  font-size: 1.1rem;
+}
+
+.alarms-add-btn {
+  width: auto;
+  white-space: nowrap;
+}
+
+.alarms-list {
+  display: grid;
+  gap: 1rem;
+}
+
+@media (min-width: 600px) {
+  .alarms-list {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.alarm-card h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.alarm-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.alarm-actions {
+  display: flex;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.alarm-card.alarm-due {
+  border-color: var(--warning);
+}
+
+.alarm-details {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem 1rem;
+  margin: 0 0 0.75rem;
+  font-size: 0.85rem;
+}
+
+.alarm-details dt {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.alarm-details dd {
+  margin: 0.15rem 0 0;
+  font-weight: 600;
+}
+
+.maint-status {
+  font-size: 0.85rem;
+  margin: 0 0 0.75rem;
+  color: var(--muted);
+}
+
+.maint-status.due {
+  color: var(--warning);
+  font-weight: 600;
+}
+
+.mileage-badge {
+  font-size: 0.9rem;
+  color: var(--accent);
+  margin: 0 0 1rem;
+  font-weight: 500;
+}
+
+.btn-sm {
+  padding: 0.4rem 0.65rem;
+  font-size: 0.8rem;
+  width: auto;
+}
+
+.btn-mark-done {
+  width: 100%;
+}
+
+.link-alarms {
+  color: var(--accent);
+  margin-left: 0.25rem;
+}
+
+#alarm-dialog {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0;
+  background: var(--surface);
+  color: var(--text);
+  max-width: 420px;
+  width: calc(100% - 2rem);
+}
+
+#alarm-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.6);
+}
+
+#alarm-form {
+  padding: 1.25rem;
+}
+
+#alarm-form h3 {
+  margin: 0 0 1rem;
+}
+
+.charts-grid {
+  display: grid;
+  gap: 1.25rem;
+}
+
+@media (min-width: 700px) {
+  .charts-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.chart-card h3 {
+  margin: 0 0 0.75rem;
+  font-size: 0.95rem;
+  color: var(--muted);
+}
+
+.chart-card canvas {
+  max-height: 220px;
+}
+
+#obs-dialog {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0;
+  background: var(--surface);
+  color: var(--text);
+  max-width: 420px;
+  width: calc(100% - 2rem);
+}
+
+#obs-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.6);
+}
+
+#obs-form {
+  padding: 1.25rem;
+}
+
+#obs-form h3 {
+  margin: 0 0 0.25rem;
+}
+
+.obs-meta {
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin: 0 0 0.75rem;
+}
+
+.dialog-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  margin-top: 1rem;
+}
+
+.dialog-actions .btn {
+  width: auto;
+}
+
+.btn-icon {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0.25rem 0.4rem;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.btn-icon:hover {
+  color: var(--danger);
+}

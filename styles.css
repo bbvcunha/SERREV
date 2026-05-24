@@ -57,21 +57,45 @@ body {
 
 .tabs {
   display: flex;
-  gap: 0.25rem;
+  gap: 0.2rem;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  flex-wrap: nowrap;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+}
+
+.tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .tab {
-  flex: 1;
-  min-width: 0;
-  padding: 0.65rem 0.25rem;
+  flex: 1 0 auto;
+  min-width: 3.4rem;
+  padding: 0.6rem 0.45rem;
   border: none;
   border-radius: var(--radius) var(--radius) 0 0;
   background: transparent;
   color: var(--muted);
-  font-size: 0.72rem;
-  font-weight: 500;
+  font-size: 0.78rem;
+  font-weight: 600;
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.tab-short {
+  display: none;
+}
+
+@media (max-width: 420px) {
+  .tab-long {
+    display: none;
+  }
+
+  .tab-short {
+    display: inline;
+  }
 }
 
 @media (min-width: 480px) {
@@ -133,12 +157,19 @@ textarea {
   display: block;
   width: 100%;
   margin-top: 0.35rem;
-  padding: 0.65rem 0.75rem;
+  padding: 0.75rem 0.85rem;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--bg);
   color: var(--text);
-  font-size: 1rem;
+  font-size: 16px;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+input[type="datetime-local"] {
+  min-height: 2.75rem;
+  color-scheme: dark;
 }
 
 label input:focus,

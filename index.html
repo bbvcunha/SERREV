@@ -7,18 +7,18 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="Carro KPI" />
   <title>Controle do Carro — KPIs</title>
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=3" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
   <header class="app-header">
     <h1>Controle do Carro</h1>
     <p id="sync-status" class="sync-status" aria-live="polite"></p>
-    <nav class="tabs" role="tablist">
-      <button type="button" class="tab active" data-screen="entry" role="tab" aria-selected="true">Abastecimento</button>
-      <button type="button" class="tab" data-screen="table" role="tab">Dados</button>
+    <nav class="tabs" role="tablist" aria-label="Menu principal">
+      <button type="button" class="tab active" data-screen="entry" role="tab" aria-selected="true"><span class="tab-long">Abastecimento</span><span class="tab-short">Abast.</span></button>
+      <button type="button" class="tab" data-screen="table" role="tab"><span class="tab-long">Dados</span><span class="tab-short">Dados</span></button>
       <button type="button" class="tab" data-screen="charts" role="tab">KPIs</button>
-      <button type="button" class="tab" data-screen="alarms" role="tab">Alarmes</button>
+      <button type="button" class="tab" data-screen="alarms" role="tab"><span class="tab-long">Alarmes</span><span class="tab-short">Alarm.</span></button>
       <button type="button" class="tab" data-screen="account" role="tab">Conta</button>
     </nav>
   </header>
@@ -210,8 +210,8 @@
     </form>
   </dialog>
 
-  <script src="sheets-config.js"></script>
-  <script src="sync.js"></script>
-  <script src="app.js"></script>
+  <script src="sheets-config.js?v=3"></script>
+  <script src="sync.js?v=3"></script>
+  <script src="app.js?v=3"></script>
 </body>
 </html>

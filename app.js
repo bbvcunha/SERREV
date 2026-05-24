@@ -578,20 +578,69 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
+const OBS_TAGS = [
+  { id: 'trip', emoji: '🚙', label: 'Viagem longa' },
+  { id: 'maint', emoji: '🛠️', label: 'Manutenção' },
+  { id: 'warn', emoji: '⚠️', label: 'Atenção' },
+];
+
+function parseObs(obs) {
+  let text = (obs || '').trim();
+  const selected = new Set();
+  for (const tag of OBS_TAGS) {
+    if (text.includes(tag.emoji)) {
+      selected.add(tag.id);
+      text = text.split(tag.emoji).join(' ');
+    }
+  }
+  text = text.replace(/\s+/g, ' ').trim();
+  return { selected, text };
+}
+
+function buildObs(selectedIds, freeText) {
+  const emojis = OBS_TAGS.filter((t) => selectedIds.has(t.id)).map((t) => t.emoji);
+  const note = (freeText || '').trim();
+  return [...emojis, note].filter(Boolean).join(' ');
+}
+
+function setObsTagSelection(selected) {
+  document.querySelectorAll('.obs-tag').forEach((btn) => {
+    const on = selected.has(btn.dataset.obsTag);
+    btn.classList.toggle('active', on);
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+}
+
+function getObsTagSelection() {
+  const selected = new Set();
+  document.querySelectorAll('.obs-tag.active').forEach((btn) => {
+    selected.add(btn.dataset.obsTag);
+  });
+  return selected;
+}
+
+function resetObsDialog() {
+  setObsTagSelection(new Set());
+  document.getElementById('obs-text').value = '';
+}
+
 function openObsDialog(id) {
   const fill = getFills().find((f) => f.id === id);
   if (!fill) return;
   editingObsId = id;
+  const parsed = parseObs(fill.obs);
   document.getElementById('obs-meta').textContent = `${formatDateTime(fill.datetime)} — ${formatNumber(fill.mileage)} km`;
-  document.getElementById('obs-text').value = fill.obs || '';
+  setObsTagSelection(parsed.selected);
+  document.getElementById('obs-text').value = parsed.text;
   document.getElementById('obs-dialog').showModal();
 }
 
-async function saveObs(text) {
+async function saveObs() {
   if (!editingObsId) return;
   const idx = DataStore.fills.findIndex((f) => f.id === editingObsId);
   if (idx === -1) return;
-  DataStore.fills[idx].obs = text.trim();
+  const obs = buildObs(getObsTagSelection(), document.getElementById('obs-text').value);
+  DataStore.fills[idx].obs = obs;
   await DataStore.persist();
   editingObsId = null;
   renderTable();
@@ -845,14 +894,22 @@ document.getElementById('data-tbody').addEventListener('click', async (e) => {
   }
 });
 
+document.getElementById('obs-tags').addEventListener('click', (e) => {
+  const btn = e.target.closest('.obs-tag');
+  if (!btn) return;
+  btn.classList.toggle('active');
+  btn.setAttribute('aria-pressed', btn.classList.contains('active') ? 'true' : 'false');
+});
+
 document.getElementById('obs-form').addEventListener('submit', async (e) => {
   e.preventDefault();
-  await saveObs(document.getElementById('obs-text').value);
+  await saveObs();
   document.getElementById('obs-dialog').close();
 });
 
 document.getElementById('obs-cancel').addEventListener('click', () => {
   editingObsId = null;
+  resetObsDialog();
   document.getElementById('obs-dialog').close();
 });
 

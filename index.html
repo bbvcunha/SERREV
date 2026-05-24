@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="SErreV" />
   <title>SErreV</title>
-  <link rel="stylesheet" href="styles.css?v=6" />
+  <link rel="stylesheet" href="styles.css?v=7" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
@@ -163,7 +163,16 @@
     <form method="dialog" id="obs-form">
       <h3>Observação</h3>
       <p class="obs-meta" id="obs-meta"></p>
-      <textarea id="obs-text" rows="5" placeholder="ex.: Viagem longa para a praia, troca de óleo aos 120.000 km…"></textarea>
+      <p class="obs-tags-label">Marcadores (opcional — pode escolher vários ou nenhum)</p>
+      <div class="obs-tags" id="obs-tags" role="group" aria-label="Marcadores">
+        <button type="button" class="obs-tag" data-obs-tag="trip" aria-pressed="false"><span class="obs-tag-emoji">🚙</span> Viagem longa</button>
+        <button type="button" class="obs-tag" data-obs-tag="maint" aria-pressed="false"><span class="obs-tag-emoji">🛠️</span> Manutenção</button>
+        <button type="button" class="obs-tag" data-obs-tag="warn" aria-pressed="false"><span class="obs-tag-emoji">⚠️</span> Atenção</button>
+      </div>
+      <label class="obs-text-label">
+        Texto livre
+        <textarea id="obs-text" rows="4" placeholder="Detalhes adicionais…"></textarea>
+      </label>
       <div class="dialog-actions">
         <button type="button" class="btn secondary" id="obs-cancel">Cancelar</button>
         <button type="submit" class="btn primary">Salvar</button>
@@ -219,8 +228,8 @@
     </form>
   </dialog>
 
-  <script src="sheets-config.js?v=6"></script>
-  <script src="sync.js?v=6"></script>
-  <script src="app.js?v=6"></script>
+  <script src="sheets-config.js?v=7"></script>
+  <script src="sync.js?v=7"></script>
+  <script src="app.js?v=7"></script>
 </body>
 </html>

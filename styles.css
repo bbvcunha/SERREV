@@ -751,6 +751,59 @@ td.col-end {
   margin: 0 0 0.75rem;
 }
 
+.obs-tags-label {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin: 0 0 0.5rem;
+}
+
+.obs-tags {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-bottom: 0.85rem;
+}
+
+.obs-tag {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.obs-tag-emoji {
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
+.obs-tag.active {
+  border-color: var(--accent);
+  background: rgba(61, 158, 255, 0.12);
+  color: var(--accent);
+}
+
+.obs-text-label {
+  display: block;
+  margin-bottom: 0;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.obs-text-label textarea {
+  margin-top: 0.35rem;
+}
+
 .dialog-actions {
   display: flex;
   gap: 0.5rem;

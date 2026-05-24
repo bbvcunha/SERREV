@@ -80,11 +80,14 @@ function computeKpiSummary(enriched) {
   const intervals = enriched.filter((r) => r.daysSincePrev != null && r.daysSincePrev >= 0);
 
   const totalKm = periods.reduce((s, r) => s + r.distanceKm, 0);
-  const totalLiters = periods.reduce((s, r) => s + r.liters, 0);
-  const totalSpent = enriched.reduce((s, r) => s + r.amount, 0);
+  const totalLitersPeriods = periods.reduce((s, r) => s + r.liters, 0);
   const periodSpent = periods.reduce((s, r) => s + r.amount, 0);
 
-  const avgConsumption = totalLiters > 0 ? totalKm / totalLiters : null;
+  const allFills = enriched.filter((r) => r.liters > 0);
+  const totalLitersAll = allFills.reduce((s, r) => s + r.liters, 0);
+  const totalSpentAll = allFills.reduce((s, r) => s + r.amount, 0);
+
+  const avgConsumption = totalLitersPeriods > 0 ? totalKm / totalLitersPeriods : null;
   const avgCostPerKm = totalKm > 0 ? periodSpent / totalKm : null;
   const avgDaysBetween =
     intervals.length > 0
@@ -92,20 +95,27 @@ function computeKpiSummary(enriched) {
       : null;
   const avgKmBetween = periods.length > 0 ? totalKm / periods.length : null;
 
+  const avgPricePerLiter =
+    allFills.length > 0
+      ? allFills.reduce((s, r) => s + r.pricePerLiter, 0) / allFills.length
+      : null;
+  const costPerLiter = totalLitersAll > 0 ? totalSpentAll / totalLitersAll : null;
+
   return {
     avgConsumption,
     avgCostPerKm,
-    totalKm,
-    totalSpent,
+    avgPricePerLiter,
+    costPerLiter,
     avgDaysBetween,
     avgKmBetween,
+    fillCount: enriched.length,
     periodCount: periods.length,
   };
 }
 
 function renderKpiSummary(summary) {
   const el = document.getElementById('kpi-summary');
-  if (!summary.periodCount) {
+  if (!summary.fillCount) {
     el.innerHTML = '';
     return;
   }
@@ -116,16 +126,16 @@ function renderKpiSummary(summary) {
       <strong class="kpi-value">${summary.avgConsumption != null ? formatNumber(summary.avgConsumption, 2) + ' km/L' : '—'}</strong>
     </div>
     <div class="kpi-card">
-      <span class="kpi-label">Custo médio</span>
+      <span class="kpi-label">Custo por km</span>
       <strong class="kpi-value">${summary.avgCostPerKm != null ? 'R$ ' + formatNumber(summary.avgCostPerKm, 3) + '/km' : '—'}</strong>
     </div>
     <div class="kpi-card">
-      <span class="kpi-label">Distância total</span>
-      <strong class="kpi-value">${formatNumber(summary.totalKm)} km</strong>
+      <span class="kpi-label">Preço médio</span>
+      <strong class="kpi-value">${summary.avgPricePerLiter != null ? 'R$ ' + formatNumber(summary.avgPricePerLiter, 3) + '/L' : '—'}</strong>
     </div>
     <div class="kpi-card">
-      <span class="kpi-label">Gasto total</span>
-      <strong class="kpi-value">R$ ${formatMoney(summary.totalSpent)}</strong>
+      <span class="kpi-label">Custo / litro</span>
+      <strong class="kpi-value">${summary.costPerLiter != null ? 'R$ ' + formatNumber(summary.costPerLiter, 3) + '/L' : '—'}</strong>
     </div>
     <div class="kpi-card">
       <span class="kpi-label">Intervalo médio</span>

@@ -59,13 +59,82 @@ function enrichFills(fills) {
     const pricePerLiter = fill.liters > 0 ? fill.amount / fill.liters : null;
     let consumption = null;
     let distanceKm = null;
+    let costPerKm = null;
+    let daysSincePrev = null;
+
     if (index > 0) {
       const prev = sorted[index - 1];
       distanceKm = fill.mileage - prev.mileage;
+      const ms = new Date(fill.datetime) - new Date(prev.datetime);
+      daysSincePrev = ms / (1000 * 60 * 60 * 24);
       if (distanceKm > 0 && fill.liters > 0) consumption = distanceKm / fill.liters;
+      if (distanceKm > 0) costPerKm = fill.amount / distanceKm;
     }
-    return { ...fill, pricePerLiter, consumption, distanceKm };
+
+    return { ...fill, pricePerLiter, consumption, distanceKm, costPerKm, daysSincePrev };
   });
+}
+
+function computeKpiSummary(enriched) {
+  const periods = enriched.filter((r) => r.distanceKm != null && r.distanceKm > 0);
+  const intervals = enriched.filter((r) => r.daysSincePrev != null && r.daysSincePrev >= 0);
+
+  const totalKm = periods.reduce((s, r) => s + r.distanceKm, 0);
+  const totalLiters = periods.reduce((s, r) => s + r.liters, 0);
+  const totalSpent = enriched.reduce((s, r) => s + r.amount, 0);
+  const periodSpent = periods.reduce((s, r) => s + r.amount, 0);
+
+  const avgConsumption = totalLiters > 0 ? totalKm / totalLiters : null;
+  const avgCostPerKm = totalKm > 0 ? periodSpent / totalKm : null;
+  const avgDaysBetween =
+    intervals.length > 0
+      ? intervals.reduce((s, r) => s + r.daysSincePrev, 0) / intervals.length
+      : null;
+  const avgKmBetween = periods.length > 0 ? totalKm / periods.length : null;
+
+  return {
+    avgConsumption,
+    avgCostPerKm,
+    totalKm,
+    totalSpent,
+    avgDaysBetween,
+    avgKmBetween,
+    periodCount: periods.length,
+  };
+}
+
+function renderKpiSummary(summary) {
+  const el = document.getElementById('kpi-summary');
+  if (!summary.periodCount) {
+    el.innerHTML = '';
+    return;
+  }
+
+  el.innerHTML = `
+    <div class="kpi-card">
+      <span class="kpi-label">Consumo médio</span>
+      <strong class="kpi-value">${summary.avgConsumption != null ? formatNumber(summary.avgConsumption, 2) + ' km/L' : '—'}</strong>
+    </div>
+    <div class="kpi-card">
+      <span class="kpi-label">Custo médio</span>
+      <strong class="kpi-value">${summary.avgCostPerKm != null ? 'R$ ' + formatNumber(summary.avgCostPerKm, 3) + '/km' : '—'}</strong>
+    </div>
+    <div class="kpi-card">
+      <span class="kpi-label">Distância total</span>
+      <strong class="kpi-value">${formatNumber(summary.totalKm)} km</strong>
+    </div>
+    <div class="kpi-card">
+      <span class="kpi-label">Gasto total</span>
+      <strong class="kpi-value">R$ ${formatMoney(summary.totalSpent)}</strong>
+    </div>
+    <div class="kpi-card">
+      <span class="kpi-label">Intervalo médio</span>
+      <strong class="kpi-value">${
+        summary.avgDaysBetween != null
+          ? formatNumber(summary.avgDaysBetween, 1) + ' dias · ' + formatNumber(summary.avgKmBetween) + ' km'
+          : '—'
+      }</strong>
+    </div>`;
 }
 
 function latestMileage(fills) {
@@ -222,6 +291,7 @@ function renderTable() {
     .map((row) => {
       const price = row.pricePerLiter != null ? `R$ ${formatNumber(row.pricePerLiter, 3)}` : '—';
       const cons = row.consumption != null ? formatNumber(row.consumption, 2) : '—';
+      const costKm = row.costPerKm != null ? `R$ ${formatNumber(row.costPerKm, 3)}` : '—';
       const obsLabel = row.obs?.trim() ? row.obs.trim() : 'Adicionar…';
       const obsClass = row.obs?.trim() ? 'has-note' : '';
 
@@ -232,6 +302,7 @@ function renderTable() {
         <td>R$ ${formatMoney(row.amount)}</td>
         <td>${price}</td>
         <td>${cons}</td>
+        <td>${costKm}</td>
         <td class="obs-cell col-end">
           <button type="button" class="btn obs ${obsClass}" data-obs-id="${row.id}" title="Editar observação">${escapeHtml(obsLabel)}</button>
         </td>
@@ -320,80 +391,174 @@ function destroyCharts() {
 function renderCharts() {
   const enriched = enrichFills(getFills());
   const emptyEl = document.getElementById('charts-empty');
-  const withConsumption = enriched.filter((r) => r.consumption != null);
+  const periods = enriched.filter((r) => r.distanceKm != null && r.distanceKm > 0);
 
   destroyCharts();
+  renderKpiSummary(computeKpiSummary(enriched));
 
-  if (enriched.length < 2) {
+  if (enriched.length < 2 || !periods.length) {
     emptyEl.classList.remove('hidden');
     return;
   }
   emptyEl.classList.add('hidden');
 
-  const labels = enriched.map((r) => formatDateTime(r.datetime));
+  const periodLabels = periods.map((r) => formatDateTime(r.datetime));
   let cumulativeSpent = 0;
-  const spentSeries = enriched.map((r) => {
+  const spentCumulative = enriched.map((r) => {
     cumulativeSpent += r.amount;
     return cumulativeSpent;
   });
-  const baseMileage = enriched[0].mileage;
-  const accumulatedDistance = enriched.map((r) => r.mileage - baseMileage);
+  const spentLabels = enriched.map((r) => formatDateTime(r.datetime));
+  const intervals = periods.filter((r) => r.daysSincePrev != null);
 
   const chartDefaults = {
     responsive: true,
     maintainAspectRatio: true,
-    plugins: { legend: { display: false } },
+    plugins: { legend: { display: true, labels: { color: '#8b9cb3', boxWidth: 12 } } },
     scales: {
-      x: { ticks: { color: '#8b9cb3', maxRotation: 45 }, grid: { color: 'rgba(45,58,79,0.5)' } },
+      x: { ticks: { color: '#8b9cb3', maxRotation: 45, font: { size: 10 } }, grid: { color: 'rgba(45,58,79,0.5)' } },
       y: { ticks: { color: '#8b9cb3' }, grid: { color: 'rgba(45,58,79,0.5)' } },
     },
   };
 
-  if (withConsumption.length) {
-    chartInstances.consumption = new Chart(document.getElementById('chart-consumption'), {
-      type: 'line',
-      data: {
-        labels: withConsumption.map((r) => formatDateTime(r.datetime)),
-        datasets: [{
-          data: withConsumption.map((r) => r.consumption),
+  const avgConsumption = computeKpiSummary(enriched).avgConsumption;
+
+  chartInstances.consumption = new Chart(document.getElementById('chart-consumption'), {
+    type: 'line',
+    data: {
+      labels: periodLabels,
+      datasets: [
+        {
+          label: 'Consumo (km/L)',
+          data: periods.map((r) => r.consumption),
           borderColor: '#3d9eff',
           backgroundColor: 'rgba(61,158,255,0.15)',
           fill: true,
           tension: 0.2,
-        }],
-      },
-      options: {
-        ...chartDefaults,
-        scales: { ...chartDefaults.scales, y: { ...chartDefaults.scales.y, title: { display: true, text: 'km/L', color: '#8b9cb3' } } },
-      },
-    });
-  }
+        },
+        ...(avgConsumption != null
+          ? [{
+              label: 'Média geral',
+              data: periods.map(() => avgConsumption),
+              borderColor: '#8b9cb3',
+              borderDash: [6, 4],
+              pointRadius: 0,
+              fill: false,
+            }]
+          : []),
+      ],
+    },
+    options: {
+      ...chartDefaults,
+      plugins: { ...chartDefaults.plugins, legend: { display: avgConsumption != null } },
+      scales: { ...chartDefaults.scales, y: { ...chartDefaults.scales.y, title: { display: true, text: 'km/L', color: '#8b9cb3' } } },
+    },
+  });
 
-  chartInstances.price = new Chart(document.getElementById('chart-price'), {
+  chartInstances.costKm = new Chart(document.getElementById('chart-cost-km'), {
     type: 'line',
     data: {
-      labels,
-      datasets: [{ data: enriched.map((r) => r.pricePerLiter), borderColor: '#f5b942', backgroundColor: 'rgba(245,185,66,0.12)', fill: true, tension: 0.2 }],
+      labels: periodLabels,
+      datasets: [{
+        label: 'R$/km',
+        data: periods.map((r) => r.costPerKm),
+        borderColor: '#f5b942',
+        backgroundColor: 'rgba(245,185,66,0.12)',
+        fill: true,
+        tension: 0.2,
+      }],
     },
-    options: { ...chartDefaults, scales: { ...chartDefaults.scales, y: { ...chartDefaults.scales.y, title: { display: true, text: 'R$', color: '#8b9cb3' } } } },
+    options: {
+      ...chartDefaults,
+      plugins: { legend: { display: false } },
+      scales: { ...chartDefaults.scales, y: { ...chartDefaults.scales.y, title: { display: true, text: 'R$/km', color: '#8b9cb3' } } },
+    },
   });
 
   chartInstances.distance = new Chart(document.getElementById('chart-distance'), {
-    type: 'line',
+    type: 'bar',
     data: {
-      labels,
-      datasets: [{ data: accumulatedDistance, borderColor: '#3dd68c', backgroundColor: 'rgba(61,214,140,0.12)', fill: true, tension: 0.2 }],
+      labels: periodLabels,
+      datasets: [{
+        label: 'Km no período',
+        data: periods.map((r) => r.distanceKm),
+        backgroundColor: 'rgba(61,214,140,0.55)',
+        borderColor: '#3dd68c',
+        borderWidth: 1,
+      }],
     },
-    options: { ...chartDefaults, scales: { ...chartDefaults.scales, y: { ...chartDefaults.scales.y, title: { display: true, text: 'km', color: '#8b9cb3' } } } },
+    options: {
+      ...chartDefaults,
+      plugins: { legend: { display: false } },
+      scales: { ...chartDefaults.scales, y: { ...chartDefaults.scales.y, title: { display: true, text: 'km', color: '#8b9cb3' } } },
+    },
   });
 
   chartInstances.spent = new Chart(document.getElementById('chart-spent'), {
+    type: 'line',
+    data: {
+      labels: spentLabels,
+      datasets: [{
+        label: 'Gasto acumulado',
+        data: spentCumulative,
+        borderColor: '#f07178',
+        backgroundColor: 'rgba(240,113,120,0.2)',
+        fill: true,
+        tension: 0.2,
+      }],
+    },
+    options: {
+      ...chartDefaults,
+      plugins: { legend: { display: false } },
+      scales: { ...chartDefaults.scales, y: { ...chartDefaults.scales.y, title: { display: true, text: 'R$', color: '#8b9cb3' } } },
+    },
+  });
+
+  chartInstances.interval = new Chart(document.getElementById('chart-interval'), {
     type: 'bar',
     data: {
-      labels,
-      datasets: [{ data: spentSeries, backgroundColor: 'rgba(240,113,120,0.6)', borderColor: '#f07178', borderWidth: 1 }],
+      labels: intervals.map((r) => formatDateTime(r.datetime)),
+      datasets: [
+        {
+          label: 'Dias',
+          data: intervals.map((r) => r.daysSincePrev),
+          backgroundColor: 'rgba(61,158,255,0.5)',
+          borderColor: '#3d9eff',
+          borderWidth: 1,
+          yAxisID: 'y',
+        },
+        {
+          label: 'Km',
+          data: intervals.map((r) => r.distanceKm),
+          backgroundColor: 'rgba(61,214,140,0.45)',
+          borderColor: '#3dd68c',
+          borderWidth: 1,
+          yAxisID: 'y1',
+        },
+      ],
     },
-    options: { ...chartDefaults, scales: { ...chartDefaults.scales, y: { ...chartDefaults.scales.y, title: { display: true, text: 'R$', color: '#8b9cb3' } } } },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      plugins: { legend: { labels: { color: '#8b9cb3' } } },
+      scales: {
+        x: { ticks: { color: '#8b9cb3', maxRotation: 45, font: { size: 10 } }, grid: { color: 'rgba(45,58,79,0.5)' } },
+        y: {
+          type: 'linear',
+          position: 'left',
+          title: { display: true, text: 'dias', color: '#8b9cb3' },
+          ticks: { color: '#8b9cb3' },
+          grid: { color: 'rgba(45,58,79,0.5)' },
+        },
+        y1: {
+          type: 'linear',
+          position: 'right',
+          title: { display: true, text: 'km', color: '#8b9cb3' },
+          ticks: { color: '#8b9cb3' },
+          grid: { drawOnChartArea: false },
+        },
+      },
+    },
   });
 }
 

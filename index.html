@@ -9,8 +9,6 @@
   <title>Controle do Carro — KPIs</title>
   <link rel="stylesheet" href="styles.css" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 </head>
 <body>
   <header class="app-header">
@@ -114,10 +112,13 @@
 
     <section id="screen-account" class="screen">
       <div class="card">
-        <h2>Sincronização entre dispositivos</h2>
-        <p class="hint">Use o mesmo código no celular e no computador para ver o mesmo histórico.</p>
+        <h2>Sincronização (Google Planilha)</h2>
+        <p class="hint">Os dados ficam na sua planilha no Drive. Use o mesmo código no celular e no PC.</p>
 
         <div id="cloud-banner" class="alert warning hidden"></div>
+        <p id="sheet-link-wrap" class="hidden">
+          <a id="sheet-link" href="#" target="_blank" rel="noopener" class="link-sheet">Abrir minha planilha no Google Sheets</a>
+        </p>
 
         <label class="sync-code-label">
           Seu código de sincronização
@@ -144,7 +145,7 @@
           </label>
         </div>
 
-        <p class="account-footnote">Os dados são salvos neste aparelho e copiados para a nuvem (Firebase) quando configurado. Sem nuvem, use exportar/importar entre aparelhos.</p>
+        <p class="account-footnote">Configure a planilha uma vez (<strong>SETUP-PLANILHA.md</strong>). Quem tiver acesso ao arquivo no Drive vê os dados; o app usa URL do script + senha API.</p>
       </div>
     </section>
   </main>
@@ -209,7 +210,7 @@
     </form>
   </dialog>
 
-  <script src="firebase-config.js"></script>
+  <script src="sheets-config.js"></script>
   <script src="sync.js"></script>
   <script src="app.js"></script>
 </body>

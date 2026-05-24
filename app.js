@@ -91,16 +91,16 @@ function updateSyncStatus() {
     const t = lastSyncedAt
       ? lastSyncedAt.toLocaleString(LOCALE, { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })
       : 'agora';
-    el.textContent = `Nuvem ativa · ${getFills().length} registros · sync ${t}`;
+    el.textContent = `Planilha ativa · ${getFills().length} registros · ${t}`;
     el.className = 'sync-status ok';
     return;
   }
   if (cloudEnabled && !cloudReady) {
-    el.textContent = 'Conectando à nuvem…';
+    el.textContent = 'Conectando à planilha…';
     el.className = 'sync-status warn';
     return;
   }
-  el.textContent = `Salvo neste aparelho · ${getFills().length} registros · configure a nuvem em Conta`;
+  el.textContent = `Salvo neste aparelho · ${getFills().length} registros · configure a planilha em Conta`;
   el.className = 'sync-status local';
 }
 
@@ -111,11 +111,21 @@ function updateCloudBanner() {
     return;
   }
   banner.classList.remove('hidden');
-  if (!DataStore.isFirebaseConfigured()) {
+  if (!DataStore.isSheetsConfigured()) {
     banner.innerHTML =
-      '<strong>Nuvem não configurada.</strong> Siga o arquivo <code>SETUP-FIREBASE.md</code> no repositório (cerca de 5 min) para sincronizar celular e PC. Enquanto isso, use <strong>Exportar/Importar backup</strong> abaixo.';
+      '<strong>Planilha não configurada.</strong> Siga <code>SETUP-PLANILHA.md</code> (Google Sheets no seu Drive, ~10 min). Enquanto isso, use <strong>Exportar/Importar backup</strong>.';
   } else {
-    banner.textContent = 'Conectando à nuvem… Verifique sua internet.';
+    banner.textContent = 'Conectando à planilha… Verifique a URL do script e sua internet.';
+  }
+
+  const linkWrap = document.getElementById('sheet-link-wrap');
+  const link = document.getElementById('sheet-link');
+  const url = DataStore.spreadsheetUrl || DataStore.getSheetsConfig().spreadsheetUrl;
+  if (url && DataStore.cloudReady) {
+    link.href = url;
+    linkWrap.classList.remove('hidden');
+  } else {
+    linkWrap.classList.add('hidden');
   }
 }
 
@@ -711,11 +721,12 @@ document.getElementById('btn-connect-sync').addEventListener('click', async () =
 document.getElementById('btn-sync-now').addEventListener('click', async () => {
   try {
     if (!DataStore.cloudEnabled) {
-      alert('Configure o Firebase primeiro (veja SETUP-FIREBASE.md).');
+      alert('Configure a Google Planilha primeiro (veja SETUP-PLANILHA.md).');
       return;
     }
-    await DataStore.pushToCloud();
-    alert('Sincronizado!');
+    await DataStore.pullFromCloud();
+    refreshUI();
+    alert('Sincronizado com a planilha!');
   } catch (e) {
     alert('Falha na sincronização: ' + (e.message || e));
   }
@@ -741,7 +752,7 @@ async function bootstrap() {
     await DataStore.init();
   } catch (e) {
     console.error(e);
-    alert('Erro ao conectar à nuvem. Os dados continuam salvos neste aparelho.');
+    alert('Erro ao conectar à planilha. Os dados continuam salvos neste aparelho.');
   }
 
   if (!DataStore.maintenance.length) {

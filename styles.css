@@ -525,6 +525,20 @@ td.col-end {
   margin-left: 0.25rem;
 }
 
+.link-sheet {
+  color: var(--accent);
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+#sheet-link-wrap {
+  margin: 0 0 1rem;
+}
+
+#sheet-link-wrap.hidden {
+  display: none;
+}
+
 #alarm-dialog {
   border: 1px solid var(--border);
   border-radius: var(--radius);

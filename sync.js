@@ -2,6 +2,7 @@ const STORAGE_SYNC_ID = 'carKpi_syncId';
 const STORAGE_FILLS = 'carKpi_fills';
 const STORAGE_MAINT = 'carKpi_maintenance';
 const STORAGE_LEGACY_MIGRATED = 'carKpi_cloudMigrated';
+const STORAGE_SHEET_URL = 'carKpi_spreadsheetUrl';
 
 const DataStore = {
   fills: [],
@@ -9,8 +10,10 @@ const DataStore = {
   syncId: null,
   cloudEnabled: false,
   cloudReady: false,
+  cloudProvider: null,
   syncing: false,
   lastSyncedAt: null,
+  spreadsheetUrl: null,
   listeners: new Set(),
 
   notify() {
@@ -24,8 +27,10 @@ const DataStore = {
       syncId: this.syncId,
       cloudEnabled: this.cloudEnabled,
       cloudReady: this.cloudReady,
+      cloudProvider: this.cloudProvider,
       syncing: this.syncing,
       lastSyncedAt: this.lastSyncedAt,
+      spreadsheetUrl: this.spreadsheetUrl,
     };
   },
 
@@ -34,11 +39,29 @@ const DataStore = {
     return () => this.listeners.delete(fn);
   },
 
+  isSheetsConfigured() {
+    const c = window.SHEETS_CONFIG;
+    return !!(c && c.webAppUrl && String(c.webAppUrl).includes('script.google.com'));
+  },
+
+  isCloudConfigured() {
+    return this.isSheetsConfigured();
+  },
+
+  isFirebaseConfigured() {
+    return false;
+  },
+
+  getSheetsConfig() {
+    return window.SHEETS_CONFIG || {};
+  },
+
   localSave() {
     try {
       localStorage.setItem(STORAGE_FILLS, JSON.stringify(this.fills));
       localStorage.setItem(STORAGE_MAINT, JSON.stringify(this.maintenance));
       if (this.syncId) localStorage.setItem(STORAGE_SYNC_ID, this.syncId);
+      if (this.spreadsheetUrl) localStorage.setItem(STORAGE_SHEET_URL, this.spreadsheetUrl);
       return true;
     } catch (e) {
       console.error('localStorage', e);
@@ -51,9 +74,13 @@ const DataStore = {
       const fillsRaw = localStorage.getItem(STORAGE_FILLS);
       const maintRaw = localStorage.getItem(STORAGE_MAINT);
       const syncRaw = localStorage.getItem(STORAGE_SYNC_ID);
+      const sheetUrl = localStorage.getItem(STORAGE_SHEET_URL);
       if (fillsRaw) this.fills = JSON.parse(fillsRaw);
       if (maintRaw) this.maintenance = JSON.parse(maintRaw);
       if (syncRaw) this.syncId = syncRaw;
+      if (sheetUrl) this.spreadsheetUrl = sheetUrl;
+      const cfg = this.getSheetsConfig();
+      if (cfg.spreadsheetUrl) this.spreadsheetUrl = cfg.spreadsheetUrl;
     } catch (e) {
       console.error('localLoad', e);
     }
@@ -82,66 +109,66 @@ const DataStore = {
     return this.syncId;
   },
 
-  isFirebaseConfigured() {
-    const c = window.FIREBASE_CONFIG;
-    return !!(c && c.apiKey && c.projectId && !c.apiKey.includes('SUA_'));
+  async callSheets(action, extra = {}) {
+    const cfg = this.getSheetsConfig();
+    const params = new URLSearchParams({
+      action,
+      syncId: this.syncId,
+      secret: cfg.apiSecret || '',
+    });
+
+    const url = `${cfg.webAppUrl}${cfg.webAppUrl.includes('?') ? '&' : '?'}${params}`;
+
+    const options = { method: action === 'save' ? 'POST' : 'GET', redirect: 'follow' };
+
+    if (action === 'save') {
+      options.headers = { 'Content-Type': 'text/plain;charset=utf-8' };
+      options.body = JSON.stringify({
+        action: 'save',
+        syncId: this.syncId,
+        secret: cfg.apiSecret || '',
+        fills: JSON.stringify(this.fills),
+        maintenance: JSON.stringify(this.maintenance),
+      });
+    }
+
+    const res = await fetch(url, options);
+    const text = await res.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      throw new Error('Resposta inválida da planilha. Verifique a URL do Apps Script.');
+    }
+    if (!data.ok) throw new Error(data.error || 'Erro na planilha');
+    return data;
   },
 
   async init() {
     this.localLoad();
     this.ensureSyncId();
 
-    if (!this.isFirebaseConfigured()) {
+    if (!this.isSheetsConfigured()) {
       this.cloudEnabled = false;
+      this.cloudProvider = null;
       this.notify();
       return;
     }
 
     this.cloudEnabled = true;
+    this.cloudProvider = 'sheets';
 
-    if (!firebase.apps.length) {
-      firebase.initializeApp(window.FIREBASE_CONFIG);
+    try {
+      await this.pullFromCloud();
+      this.cloudReady = true;
+    } catch (e) {
+      console.error('Sheets init', e);
+      this.cloudReady = false;
     }
-    this.db = firebase.firestore();
-    this.docRef = this.db.collection('cars').doc(this.syncId);
-
-    this.unsubscribe = this.docRef.onSnapshot(
-      (snap) => {
-        if (!snap.exists) return;
-        const data = snap.data();
-        if (data.fills) this.fills = data.fills;
-        if (data.maintenance) this.maintenance = data.maintenance;
-        this.lastSyncedAt = data.updatedAt?.toDate?.() || new Date();
-        this.localSave();
-        this.cloudReady = true;
-        this.syncing = false;
-        this.notify();
-      },
-      (err) => {
-        console.error('Firestore snapshot', err);
-        this.cloudReady = false;
-        this.syncing = false;
-        this.notify();
-      }
-    );
-
-    await this.pullFromCloud();
-    this.cloudReady = true;
     this.notify();
   },
 
-  async pullFromCloud() {
-    if (!this.cloudEnabled || !this.docRef) return;
-
-    const snap = await this.docRef.get();
-    if (!snap.exists) {
-      if (this.fills.length || this.maintenance.length) {
-        await this.pushToCloud();
-      }
-      return;
-    }
-
-    const data = snap.data();
+  applyRemoteData(data) {
     const remoteFills = data.fills || [];
     const remoteMaint = data.maintenance || [];
     const localHasData = this.fills.length > 0 || this.maintenance.length > 0;
@@ -151,22 +178,37 @@ const DataStore = {
       this.fills = remoteFills;
       this.maintenance = remoteMaint;
     } else if (localHasData && !remoteHasData) {
-      await this.pushToCloud();
+      return 'push';
     } else if (localHasData && remoteHasData) {
-      const localUpdated = localStorage.getItem(STORAGE_LEGACY_MIGRATED);
-      if (!localUpdated) {
+      const merged = !localStorage.getItem(STORAGE_LEGACY_MIGRATED);
+      if (merged) {
         this.fills = this.mergeById(this.fills, remoteFills);
         this.maintenance = this.mergeById(this.maintenance, remoteMaint);
         localStorage.setItem(STORAGE_LEGACY_MIGRATED, '1');
-        await this.pushToCloud();
-      } else {
-        this.fills = remoteFills;
-        this.maintenance = remoteMaint;
+        return 'push';
       }
+      this.fills = remoteFills;
+      this.maintenance = remoteMaint;
     }
 
-    this.localSave();
-    this.lastSyncedAt = data.updatedAt?.toDate?.() || new Date();
+    if (data.spreadsheetUrl) this.spreadsheetUrl = data.spreadsheetUrl;
+    if (data.updatedAt) this.lastSyncedAt = new Date(data.updatedAt);
+    return 'done';
+  },
+
+  async pullFromCloud() {
+    if (!this.cloudEnabled) return;
+
+    const data = await this.callSheets('get');
+    const result = this.applyRemoteData(data);
+
+    if (result === 'push') await this.pushToCloud();
+    else this.localSave();
+
+    if (data.spreadsheetUrl) {
+      this.spreadsheetUrl = data.spreadsheetUrl;
+      localStorage.setItem(STORAGE_SHEET_URL, data.spreadsheetUrl);
+    }
   },
 
   mergeById(local, remote) {
@@ -176,22 +218,20 @@ const DataStore = {
   },
 
   async pushToCloud() {
-    if (!this.cloudEnabled || !this.docRef) return false;
+    if (!this.cloudEnabled) return false;
 
     this.syncing = true;
     this.notify();
 
     try {
-      await this.docRef.set({
-        fills: this.fills,
-        maintenance: this.maintenance,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-      });
-      this.lastSyncedAt = new Date();
+      const data = await this.callSheets('save');
+      this.lastSyncedAt = new Date(data.updatedAt || Date.now());
+      if (data.spreadsheetUrl) {
+        this.spreadsheetUrl = data.spreadsheetUrl;
+        localStorage.setItem(STORAGE_SHEET_URL, data.spreadsheetUrl);
+      }
+      this.localSave();
       return true;
-    } catch (e) {
-      console.error('pushToCloud', e);
-      throw e;
     } finally {
       this.syncing = false;
       this.notify();
@@ -200,29 +240,22 @@ const DataStore = {
 
   async persist() {
     const ok = this.localSave();
-    if (!ok) throw new Error('Não foi possível salvar no dispositivo. Verifique espaço e modo privado do navegador.');
+    if (!ok) {
+      throw new Error(
+        'Não foi possível salvar no dispositivo. Verifique espaço e modo privado do navegador.'
+      );
+    }
 
-    if (this.cloudEnabled && this.docRef) {
+    if (this.cloudEnabled) {
       await this.pushToCloud();
     }
     this.notify();
   },
 
   async switchAccount(newSyncId) {
-    if (this.unsubscribe) this.unsubscribe();
     this.setSyncId(newSyncId);
     this.cloudReady = false;
-    await this.init();
-  },
-
-  async createNewAccount() {
-    if (this.unsubscribe) this.unsubscribe();
-    this.syncId = this.generateSyncId();
-    localStorage.setItem(STORAGE_SYNC_ID, this.syncId);
-    this.fills = [];
-    this.maintenance = [];
     localStorage.removeItem(STORAGE_LEGACY_MIGRATED);
     await this.init();
-    await this.persist();
   },
 };

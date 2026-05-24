@@ -404,23 +404,17 @@ function renderCharts() {
   const periods = enriched.filter((r) => r.distanceKm != null && r.distanceKm > 0);
 
   destroyCharts();
-  renderKpiSummary(computeKpiSummary(enriched));
+  const summary = computeKpiSummary(enriched);
+  renderKpiSummary(summary);
 
-  if (enriched.length < 2 || !periods.length) {
+  if (!enriched.length) {
     emptyEl.classList.remove('hidden');
+    document.querySelectorAll('.charts-period').forEach((el) => el.classList.add('hidden'));
     return;
   }
   emptyEl.classList.add('hidden');
 
-  const periodLabels = periods.map((r) => formatDateTime(r.datetime));
-  let cumulativeSpent = 0;
-  const spentCumulative = enriched.map((r) => {
-    cumulativeSpent += r.amount;
-    return cumulativeSpent;
-  });
-  const spentLabels = enriched.map((r) => formatDateTime(r.datetime));
-  const intervals = periods.filter((r) => r.daysSincePrev != null);
-
+  const fillLabels = enriched.map((r) => formatDateTime(r.datetime));
   const chartDefaults = {
     responsive: true,
     maintainAspectRatio: true,
@@ -431,7 +425,57 @@ function renderCharts() {
     },
   };
 
-  const avgConsumption = computeKpiSummary(enriched).avgConsumption;
+  chartInstances.priceLiter = new Chart(document.getElementById('chart-price-liter'), {
+    type: 'line',
+    data: {
+      labels: fillLabels,
+      datasets: [
+        {
+          label: 'R$/L',
+          data: enriched.map((r) => r.pricePerLiter),
+          borderColor: '#f5b942',
+          backgroundColor: 'rgba(245,185,66,0.15)',
+          fill: true,
+          tension: 0.2,
+          pointRadius: 4,
+        },
+        ...(summary.avgPricePerLiter != null
+          ? [{
+              label: 'Preço médio',
+              data: enriched.map(() => summary.avgPricePerLiter),
+              borderColor: '#8b9cb3',
+              borderDash: [6, 4],
+              pointRadius: 0,
+              fill: false,
+            }]
+          : []),
+      ],
+    },
+    options: {
+      ...chartDefaults,
+      plugins: { ...chartDefaults.plugins, legend: { display: summary.avgPricePerLiter != null } },
+      scales: {
+        ...chartDefaults.scales,
+        y: { ...chartDefaults.scales.y, title: { display: true, text: 'R$/L', color: '#8b9cb3' } },
+      },
+    },
+  });
+
+  if (enriched.length < 2 || !periods.length) {
+    document.querySelectorAll('.charts-period').forEach((el) => el.classList.add('hidden'));
+    return;
+  }
+  document.querySelectorAll('.charts-period').forEach((el) => el.classList.remove('hidden'));
+
+  const periodLabels = periods.map((r) => formatDateTime(r.datetime));
+  let cumulativeSpent = 0;
+  const spentCumulative = enriched.map((r) => {
+    cumulativeSpent += r.amount;
+    return cumulativeSpent;
+  });
+  const spentLabels = enriched.map((r) => formatDateTime(r.datetime));
+  const intervals = periods.filter((r) => r.daysSincePrev != null);
+  const avgConsumption = summary.avgConsumption;
 
   chartInstances.consumption = new Chart(document.getElementById('chart-consumption'), {
     type: 'line',

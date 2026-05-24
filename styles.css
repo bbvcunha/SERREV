@@ -713,6 +713,10 @@ td.col-end {
   line-height: 1.35;
 }
 
+.charts-period.hidden {
+  display: none;
+}
+
 .chart-card h3 {
   margin: 0 0 0.75rem;
   font-size: 0.95rem;

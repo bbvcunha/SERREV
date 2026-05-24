@@ -86,6 +86,11 @@ function validarSyncId_(syncId, aoSalvar) {
 
 function instalarPlanilha() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss) {
+    throw new Error(
+      'Abra a planilha no Google Sheets e execute de Extensões → Apps Script (projeto vinculado à planilha).'
+    );
+  }
 
   criarAbaSeNaoExiste_(ABAS.CONFIG, ['chave', 'valor']);
   criarAbaSeNaoExiste_(ABAS.FILLS, [
@@ -108,9 +113,14 @@ function instalarPlanilha() {
   cfg.getRange('A2').setValue('syncId');
   cfg.getRange('A3').setValue('updatedAt');
 
-  SpreadsheetApp.getUi().alert(
-    'Planilha pronta!\n\nPróximo passo: defina API_SECRET nas propriedades do script e publique como aplicativo da web (veja SETUP-PLANILHA.md).'
-  );
+  Logger.log('OK: abas Abastecimentos, Alarmes e Config criadas.');
+  try {
+    SpreadsheetApp.getUi().alert(
+      'Planilha pronta!\n\nPróximo: API_SECRET → Implantar aplicativo da web.'
+    );
+  } catch (e) {
+    Logger.log('Instalação concluída (sem popup de UI).');
+  }
 }
 
 function criarAbaSeNaoExiste_(nome, cabecalho) {
@@ -187,7 +197,7 @@ function escreverAbastecimentos_(fills) {
     f.amount,
     f.obs || '',
   ]);
-  sheet.getRange(2, 1, rows.length, header.length).setValues(rows);
+  sheet.getRange(2, 1, rows.length + 1, header.length).setValues(rows);
 }
 
 function lerAlarmes_() {
@@ -220,5 +230,5 @@ function escreverAlarmes_(items) {
     a.intervalKm,
     a.lastServiceKm,
   ]);
-  sheet.getRange(2, 1, rows.length, header.length).setValues(rows);
+  sheet.getRange(2, 1, rows.length + 1, header.length).setValues(rows);
 }

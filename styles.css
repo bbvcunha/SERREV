@@ -84,17 +84,25 @@ body {
   white-space: nowrap;
 }
 
-.tab-short {
-  display: none;
+.tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1rem;
 }
 
-@media (max-width: 420px) {
-  .tab-long {
-    display: none;
-  }
+.tab-emoji {
+  font-size: 1.1rem;
+  line-height: 1;
+}
 
-  .tab-short {
-    display: inline;
+.tab-label {
+  font-size: 0.68rem;
+}
+
+@media (min-width: 480px) {
+  .tab-label {
+    font-size: 0.78rem;
   }
 }
 
@@ -554,6 +562,54 @@ td.col-end {
 .link-alarms {
   color: var(--accent);
   margin-left: 0.25rem;
+}
+
+.settings-subnav {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  background: var(--surface);
+  padding: 0.35rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+
+.subnav-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.6rem 0.5rem;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.subnav-btn.active {
+  background: var(--accent);
+  color: #0a1628;
+}
+
+.settings-panel {
+  display: none;
+}
+
+.settings-panel.active {
+  display: block;
+}
+
+.compact-hint {
+  font-size: 0.85rem;
+  margin: 0 0 0.5rem;
+}
+
+.alarms-header .compact-hint {
+  margin: 0;
 }
 
 .link-sheet {

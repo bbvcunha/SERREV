@@ -13,6 +13,7 @@ let editingObsId = null;
 let editingAlarmId = null;
 let editingFillId = null;
 let currentScreen = 'entry';
+let currentSettingsPanel = 'alarms';
 
 function getFills() {
   return DataStore.fills;
@@ -137,10 +138,25 @@ function refreshUI() {
   if (currentScreen === 'entry') renderEntryAlerts();
   if (currentScreen === 'table') renderTable();
   if (currentScreen === 'charts') renderCharts();
-  if (currentScreen === 'alarms') renderAlarmsScreen();
+  if (currentScreen === 'settings' && currentSettingsPanel === 'alarms') renderAlarmsScreen();
+  if (currentScreen === 'settings' && currentSettingsPanel === 'account') updateCloudBanner();
 }
 
-function switchScreen(name) {
+function switchSettingsPanel(panel) {
+  currentSettingsPanel = panel;
+  document.querySelectorAll('.subnav-btn').forEach((btn) => {
+    const on = btn.dataset.settingsPanel === panel;
+    btn.classList.toggle('active', on);
+    btn.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+  document.querySelectorAll('.settings-panel').forEach((el) => {
+    el.classList.toggle('active', el.id === `settings-panel-${panel}`);
+  });
+  if (panel === 'alarms') renderAlarmsScreen();
+  if (panel === 'account') updateCloudBanner();
+}
+
+function switchScreen(name, settingsPanel) {
   currentScreen = name;
   document.querySelectorAll('.screen').forEach((el) => el.classList.remove('active'));
   document.querySelectorAll('.tab').forEach((el) => {
@@ -148,6 +164,7 @@ function switchScreen(name) {
     el.setAttribute('aria-selected', el.dataset.screen === name ? 'true' : 'false');
   });
   document.getElementById(`screen-${name}`).classList.add('active');
+  if (name === 'settings') switchSettingsPanel(settingsPanel || currentSettingsPanel);
   refreshUI();
 }
 
@@ -184,7 +201,7 @@ function renderEntryAlerts() {
     due
       .map(
         (d) =>
-          `<div class="alert warning"><span>⚠</span><span><strong>${escapeHtml(d.label)}</strong> — vencido (${formatNumber(d.kmOver)} km além do intervalo). Última manutenção em ${formatNumber(d.lastServiceKm)} km. <a href="#" class="link-alarms" data-goto-alarms>Ver alarmes</a></span></div>`
+          `<div class="alert warning"><span>⚠</span><span><strong>${escapeHtml(d.label)}</strong> — vencido (${formatNumber(d.kmOver)} km). <a href="#" class="link-alarms" data-goto-alarms>Config → Alarmes</a></span></div>`
       )
       .join('');
 }
@@ -623,6 +640,10 @@ document.querySelectorAll('.tab').forEach((tab) => {
   tab.addEventListener('click', () => switchScreen(tab.dataset.screen));
 });
 
+document.querySelectorAll('.subnav-btn').forEach((btn) => {
+  btn.addEventListener('click', () => switchSettingsPanel(btn.dataset.settingsPanel));
+});
+
 document.getElementById('entry-form').addEventListener('submit', (e) => {
   e.preventDefault();
   saveFillEntry(e.target);
@@ -693,7 +714,7 @@ document.getElementById('alarms-list').addEventListener('click', (e) => {
 
 document.getElementById('entry-alerts').addEventListener('click', (e) => {
   const link = e.target.closest('[data-goto-alarms]');
-  if (link) { e.preventDefault(); switchScreen('alarms'); }
+  if (link) { e.preventDefault(); switchScreen('settings', 'alarms'); }
 });
 
 document.getElementById('btn-copy-sync').addEventListener('click', async () => {

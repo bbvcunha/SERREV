@@ -68,9 +68,19 @@ function handleRequest(params) {
 function validarSegredo_(enviado) {
   const esperado = PropertiesService.getScriptProperties().getProperty('API_SECRET');
   if (!esperado) return;
-  if ((enviado || '') !== esperado) {
-    throw new Error('Chave de segurança inválida.');
+  const a = String(enviado || '').trim();
+  const b = String(esperado).trim();
+  if (a !== b) {
+    throw new Error(
+      'Chave de segurança inválida. Confira API_SECRET em Propriedades do script (deve ser igual ao sheets-config.js).'
+    );
   }
+}
+
+/** Execute no editor para testar se API_SECRET está definida (não exibe o valor). */
+function testarConfiguracao() {
+  const ok = !!PropertiesService.getScriptProperties().getProperty('API_SECRET');
+  Logger.log(ok ? 'API_SECRET: definida' : 'API_SECRET: AUSENTE — adicione nas Propriedades do script');
 }
 
 function validarSyncId_(syncId, aoSalvar) {

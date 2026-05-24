@@ -6,155 +6,182 @@
   <meta name="theme-color" content="#1a2332" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="Carro KPI" />
-  <title>Controle do Carro — KPIs</title>
+  <title>Controle do Carro</title>
   <link rel="stylesheet" href="styles.css" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
   <header class="app-header">
-    <h1>Controle do Carro</h1>
-    <p id="sync-status" class="sync-status" aria-live="polite"></p>
-    <nav class="tabs" role="tablist">
-      <button type="button" class="tab active" data-screen="entry" role="tab" aria-selected="true">Abastecimento</button>
-      <button type="button" class="tab" data-screen="table" role="tab">Dados</button>
-      <button type="button" class="tab" data-screen="charts" role="tab">KPIs</button>
-      <button type="button" class="tab" data-screen="alarms" role="tab">Alarmes</button>
-      <button type="button" class="tab" data-screen="account" role="tab">Conta</button>
+    <div class="header-row">
+      <h1>Carro</h1>
+      <span id="sync-status" class="sync-badge" aria-live="polite"></span>
+    </div>
+    <nav class="desktop-nav" role="tablist" aria-label="Menu desktop">
+      <button type="button" class="desktop-nav-item active" data-screen="entry">Abastecer</button>
+      <button type="button" class="desktop-nav-item" data-screen="table">Histórico</button>
+      <button type="button" class="desktop-nav-item" data-screen="charts">KPIs</button>
+      <button type="button" class="desktop-nav-item" data-screen="settings">Config</button>
     </nav>
   </header>
 
   <main>
     <section id="screen-entry" class="screen active">
-      <p class="hint">Registre logo após abastecer o tanque.</p>
-      <form id="entry-form" class="card">
-        <label>
-          Data e hora
-          <input type="datetime-local" id="field-datetime" required />
-        </label>
-        <label>
-          Quilometragem total (km)
-          <input type="number" id="field-mileage" min="0" step="1" required placeholder="ex.: 125430" />
-        </label>
-        <label>
-          Litros
-          <input type="number" id="field-liters" min="0.01" step="0.01" required placeholder="ex.: 45,2" />
-        </label>
-        <label>
-          Valor total pago (R$)
-          <input type="number" id="field-amount" min="0.01" step="0.01" required placeholder="ex.: 278,50" />
-        </label>
-        <button type="submit" class="btn primary" id="entry-submit">Salvar abastecimento</button>
+      <form id="entry-form" class="entry-form">
+        <div class="card entry-card">
+          <label>
+            Data e hora
+            <input type="datetime-local" id="field-datetime" required />
+          </label>
+          <label>
+            Km total
+            <input type="number" id="field-mileage" inputmode="numeric" min="0" step="1" required placeholder="125430" />
+          </label>
+          <label>
+            Litros
+            <input type="number" id="field-liters" inputmode="decimal" min="0.01" step="0.01" required placeholder="45,2" />
+          </label>
+          <label>
+            Valor (R$)
+            <input type="number" id="field-amount" inputmode="decimal" min="0.01" step="0.01" required placeholder="278,50" />
+          </label>
+        </div>
+        <div id="entry-alerts" class="alerts-panel"></div>
       </form>
-      <div id="entry-alerts" class="alerts-panel"></div>
+      <div class="sticky-save">
+        <button type="submit" form="entry-form" class="btn primary btn-lg" id="entry-submit">Salvar abastecimento</button>
+      </div>
     </section>
 
     <section id="screen-table" class="screen">
-      <div class="table-actions">
-        <p class="hint">Toque em <strong>OBS</strong> para anotar. Use <strong>Editar</strong> para corrigir ou incluir histórico.</p>
-        <button type="button" class="btn secondary btn-sm" id="btn-add-history">+ Adicionar ao histórico</button>
+      <div class="screen-head">
+        <h2 class="screen-title">Histórico</h2>
+        <button type="button" class="btn secondary btn-sm" id="btn-add-history">+ Antigo</button>
       </div>
-      <div class="table-wrap card">
+      <div id="fill-cards" class="fill-cards"></div>
+      <div class="table-wrap card table-desktop">
         <table id="data-table">
           <thead>
             <tr>
               <th>Data / hora</th>
-              <th>Km total</th>
-              <th>Litros</th>
-              <th>Valor (R$)</th>
+              <th>Km</th>
+              <th>L</th>
+              <th>R$</th>
               <th>R$/L</th>
               <th>km/L</th>
               <th class="col-end">OBS</th>
-              <th class="col-end">Ações</th>
+              <th class="col-end"></th>
             </tr>
           </thead>
           <tbody id="data-tbody"></tbody>
         </table>
-        <p id="table-empty" class="empty-state">Nenhum abastecimento ainda. Cadastre o primeiro na aba Abastecimento.</p>
-        <p class="table-footnote">R$/L = valor ÷ litros · km/L = (km atual − km anterior) ÷ litros · Toque em OBS para anotações</p>
       </div>
+      <p id="table-empty" class="empty-state">Nenhum abastecimento ainda.</p>
     </section>
 
     <section id="screen-charts" class="screen">
+      <h2 class="screen-title">Indicadores</h2>
       <div class="charts-grid">
         <div class="card chart-card">
           <h3>Consumo (km/L)</h3>
           <canvas id="chart-consumption"></canvas>
         </div>
         <div class="card chart-card">
-          <h3>Preço por litro (R$)</h3>
+          <h3>Preço / litro</h3>
           <canvas id="chart-price"></canvas>
         </div>
         <div class="card chart-card">
-          <h3>Distância acumulada (km)</h3>
+          <h3>Km acumulados</h3>
           <canvas id="chart-distance"></canvas>
         </div>
         <div class="card chart-card">
-          <h3>Gasto com combustível (acumulado)</h3>
+          <h3>Gasto acumulado</h3>
           <canvas id="chart-spent"></canvas>
         </div>
       </div>
-      <p id="charts-empty" class="empty-state">Cadastre pelo menos dois abastecimentos para ver os gráficos de consumo.</p>
+      <p id="charts-empty" class="empty-state">Cadastre 2+ abastecimentos para ver gráficos.</p>
     </section>
 
-    <section id="screen-alarms" class="screen">
-      <div class="alarms-header">
-        <div>
-          <h2>Alarmes de manutenção</h2>
-          <p class="hint">Com base na quilometragem do último abastecimento. Adicione, edite ou exclua alarmes.</p>
+    <section id="screen-settings" class="screen">
+      <h2 class="screen-title">Configurações</h2>
+      <nav class="settings-subnav" role="tablist">
+        <button type="button" class="subnav-btn active" data-settings-panel="alarms" role="tab" aria-selected="true">Manutenção</button>
+        <button type="button" class="subnav-btn" data-settings-panel="sync" role="tab">Nuvem</button>
+        <button type="button" class="subnav-btn" data-settings-panel="backup" role="tab">Backup</button>
+      </nav>
+
+      <div id="settings-panel-alarms" class="settings-panel active">
+        <div class="panel-toolbar">
+          <p class="hint compact-hint">Lembretes por quilometragem.</p>
+          <button type="button" class="btn primary btn-sm" id="btn-add-alarm">+ Alarme</button>
         </div>
-        <button type="button" class="btn primary alarms-add-btn" id="btn-add-alarm">+ Novo alarme</button>
+        <div id="alarms-summary" class="alerts-list"></div>
+        <p id="alarms-mileage" class="mileage-badge"></p>
+        <div id="alarms-list" class="alarms-list"></div>
+        <p id="alarms-empty" class="empty-state hidden">Nenhum alarme. Toque em + Alarme.</p>
       </div>
-      <div id="alarms-summary" class="alerts-list"></div>
-      <p id="alarms-mileage" class="mileage-badge"></p>
-      <div id="alarms-list" class="alarms-list"></div>
-      <p id="alarms-empty" class="empty-state hidden">Nenhum alarme cadastrado. Clique em &quot;Novo alarme&quot; para começar.</p>
-    </section>
 
-    <section id="screen-account" class="screen">
-      <div class="card">
-        <h2>Sincronização (Google Planilha)</h2>
-        <p class="hint">Os dados ficam na sua planilha no Drive. Use o mesmo código no celular e no PC.</p>
+      <div id="settings-panel-sync" class="settings-panel">
+        <div class="card">
+          <p class="hint compact-hint">Mesmo código no celular e no PC. Planilha só para consulta.</p>
+          <div id="cloud-banner" class="alert warning hidden"></div>
+          <p id="sheet-link-wrap" class="hidden sheet-link-wrap">
+            <a id="sheet-link" href="#" target="_blank" rel="noopener" class="link-sheet">Abrir planilha (opcional)</a>
+          </p>
+          <label class="sync-code-label">
+            Seu código
+            <div class="sync-code-row">
+              <input type="text" id="sync-code-display" readonly />
+              <button type="button" class="btn secondary btn-sm" id="btn-copy-sync">Copiar</button>
+            </div>
+          </label>
+          <label>
+            Outro aparelho
+            <div class="sync-code-row">
+              <input type="text" id="sync-code-input" placeholder="XXXX-XXXX-XXXX" autocapitalize="characters" />
+              <button type="button" class="btn primary btn-sm" id="btn-connect-sync">Conectar</button>
+            </div>
+          </label>
+          <button type="button" class="btn secondary btn-block" id="btn-sync-now">Sincronizar agora</button>
+        </div>
+      </div>
 
-        <div id="cloud-banner" class="alert warning hidden"></div>
-        <p id="sheet-link-wrap" class="hidden">
-          <a id="sheet-link" href="#" target="_blank" rel="noopener" class="link-sheet">Abrir minha planilha no Google Sheets</a>
-        </p>
-
-        <label class="sync-code-label">
-          Seu código de sincronização
-          <div class="sync-code-row">
-            <input type="text" id="sync-code-display" readonly />
-            <button type="button" class="btn secondary btn-sm" id="btn-copy-sync">Copiar</button>
-          </div>
-        </label>
-
-        <label>
-          Conectar outro dispositivo (cole o código)
-          <div class="sync-code-row">
-            <input type="text" id="sync-code-input" placeholder="XXXX-XXXX-XXXX" autocapitalize="characters" />
-            <button type="button" class="btn primary btn-sm" id="btn-connect-sync">Conectar</button>
-          </div>
-        </label>
-
-        <div class="account-actions">
-          <button type="button" class="btn secondary btn-sm" id="btn-sync-now">Sincronizar agora</button>
-          <button type="button" class="btn secondary btn-sm" id="btn-export-data">Exportar backup</button>
-          <label class="btn secondary btn-sm file-btn">
+      <div id="settings-panel-backup" class="settings-panel">
+        <div class="card">
+          <p class="hint compact-hint">Cópia de segurança em arquivo JSON.</p>
+          <button type="button" class="btn secondary btn-block" id="btn-export-data">Exportar backup</button>
+          <label class="btn secondary btn-block file-btn">
             Importar backup
             <input type="file" id="import-file" accept="application/json" hidden />
           </label>
         </div>
-
-        <p class="account-footnote">Configure a planilha uma vez (<strong>SETUP-PLANILHA.md</strong>). Quem tiver acesso ao arquivo no Drive vê os dados; o app usa URL do script + senha API.</p>
       </div>
     </section>
   </main>
+
+  <nav class="bottom-nav" role="tablist" aria-label="Menu principal">
+    <button type="button" class="nav-item active" data-screen="entry" role="tab" aria-selected="true">
+      <span class="nav-icon" aria-hidden="true">⛽</span>
+      <span class="nav-label">Abastecer</span>
+    </button>
+    <button type="button" class="nav-item" data-screen="table" role="tab">
+      <span class="nav-icon" aria-hidden="true">📋</span>
+      <span class="nav-label">Histórico</span>
+    </button>
+    <button type="button" class="nav-item" data-screen="charts" role="tab">
+      <span class="nav-icon" aria-hidden="true">📊</span>
+      <span class="nav-label">KPIs</span>
+    </button>
+    <button type="button" class="nav-item" data-screen="settings" role="tab">
+      <span class="nav-icon" aria-hidden="true">⚙️</span>
+      <span class="nav-label">Config</span>
+    </button>
+  </nav>
 
   <dialog id="obs-dialog">
     <form method="dialog" id="obs-form">
       <h3>Observação</h3>
       <p class="obs-meta" id="obs-meta"></p>
-      <textarea id="obs-text" rows="5" placeholder="ex.: Viagem longa para a praia, troca de óleo aos 120.000 km…"></textarea>
+      <textarea id="obs-text" rows="4" placeholder="Viagem, manutenção…"></textarea>
       <div class="dialog-actions">
         <button type="button" class="btn secondary" id="obs-cancel">Cancelar</button>
         <button type="submit" class="btn primary">Salvar</button>
@@ -165,22 +192,10 @@
   <dialog id="fill-dialog">
     <form method="dialog" id="fill-form">
       <h3 id="fill-dialog-title">Adicionar ao histórico</h3>
-      <label>
-        Data e hora
-        <input type="datetime-local" id="fill-datetime" required />
-      </label>
-      <label>
-        Quilometragem total (km)
-        <input type="number" id="fill-mileage" min="0" step="1" required />
-      </label>
-      <label>
-        Litros
-        <input type="number" id="fill-liters" min="0.01" step="0.01" required />
-      </label>
-      <label>
-        Valor total pago (R$)
-        <input type="number" id="fill-amount" min="0.01" step="0.01" required />
-      </label>
+      <label>Data e hora <input type="datetime-local" id="fill-datetime" required /></label>
+      <label>Km total <input type="number" id="fill-mileage" inputmode="numeric" min="0" step="1" required /></label>
+      <label>Litros <input type="number" id="fill-liters" inputmode="decimal" min="0.01" step="0.01" required /></label>
+      <label>Valor (R$) <input type="number" id="fill-amount" inputmode="decimal" min="0.01" step="0.01" required /></label>
       <div class="dialog-actions">
         <button type="button" class="btn secondary" id="fill-cancel">Cancelar</button>
         <button type="submit" class="btn primary" id="fill-submit">Salvar</button>
@@ -191,21 +206,12 @@
   <dialog id="alarm-dialog">
     <form method="dialog" id="alarm-form">
       <h3 id="alarm-dialog-title">Novo alarme</h3>
-      <label>
-        Nome do alarme
-        <input type="text" id="alarm-label" required maxlength="80" placeholder="ex.: Troca de óleo" />
-      </label>
-      <label>
-        Intervalo (km)
-        <input type="number" id="alarm-interval" min="100" step="100" required placeholder="ex.: 10000" />
-      </label>
-      <label>
-        Última manutenção em (km)
-        <input type="number" id="alarm-last-service" min="0" step="1" required value="0" />
-      </label>
+      <label>Nome <input type="text" id="alarm-label" required maxlength="80" placeholder="Troca de óleo" /></label>
+      <label>Intervalo (km) <input type="number" id="alarm-interval" inputmode="numeric" min="100" step="100" required /></label>
+      <label>Última manutenção (km) <input type="number" id="alarm-last-service" inputmode="numeric" min="0" step="1" required value="0" /></label>
       <div class="dialog-actions">
         <button type="button" class="btn secondary" id="alarm-cancel">Cancelar</button>
-        <button type="submit" class="btn primary">Salvar alarme</button>
+        <button type="submit" class="btn primary">Salvar</button>
       </div>
     </form>
   </dialog>

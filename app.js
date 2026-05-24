@@ -13,7 +13,6 @@ let editingObsId = null;
 let editingAlarmId = null;
 let editingFillId = null;
 let currentScreen = 'entry';
-let currentSettingsPanel = 'alarms';
 
 function getFills() {
   return DataStore.fills;
@@ -81,30 +80,28 @@ function initDatetimeInput(input) {
 
 function updateSyncStatus() {
   const el = document.getElementById('sync-status');
-  const { cloudEnabled, cloudReady, syncing } = DataStore;
-  const n = getFills().length;
+  const { cloudEnabled, cloudReady, syncing, lastSyncedAt } = DataStore;
 
   if (syncing) {
-    el.textContent = '…';
-    el.className = 'sync-badge syncing';
-    el.title = 'Sincronizando';
+    el.textContent = 'Sincronizando…';
+    el.className = 'sync-status syncing';
     return;
   }
   if (cloudEnabled && cloudReady) {
-    el.textContent = `● ${n}`;
-    el.className = 'sync-badge ok';
-    el.title = `Planilha ativa · ${n} registros`;
+    const t = lastSyncedAt
+      ? lastSyncedAt.toLocaleString(LOCALE, { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })
+      : 'agora';
+    el.textContent = `Planilha ativa · ${getFills().length} registros · ${t}`;
+    el.className = 'sync-status ok';
     return;
   }
   if (cloudEnabled && !cloudReady) {
-    el.textContent = '◌';
-    el.className = 'sync-badge warn';
-    el.title = 'Conectando…';
+    el.textContent = 'Conectando à planilha…';
+    el.className = 'sync-status warn';
     return;
   }
-  el.textContent = `○ ${n}`;
-  el.className = 'sync-badge local';
-  el.title = `${n} registros neste aparelho`;
+  el.textContent = `Salvo neste aparelho · ${getFills().length} registros · configure a planilha em Conta`;
+  el.className = 'sync-status local';
 }
 
 function updateCloudBanner() {
@@ -115,9 +112,10 @@ function updateCloudBanner() {
   }
   banner.classList.remove('hidden');
   if (!DataStore.isSheetsConfigured()) {
-    banner.textContent = 'Nuvem não configurada. Use Backup ou peça ajuda para SETUP-PLANILHA.md.';
+    banner.innerHTML =
+      '<strong>Planilha não configurada.</strong> Siga <code>SETUP-PLANILHA.md</code> (Google Sheets no seu Drive, ~10 min). Enquanto isso, use <strong>Exportar/Importar backup</strong>.';
   } else {
-    banner.textContent = 'Conectando… Verifique a internet.';
+    banner.textContent = 'Conectando à planilha… Verifique a URL do script e sua internet.';
   }
 
   const linkWrap = document.getElementById('sheet-link-wrap');
@@ -139,32 +137,17 @@ function refreshUI() {
   if (currentScreen === 'entry') renderEntryAlerts();
   if (currentScreen === 'table') renderTable();
   if (currentScreen === 'charts') renderCharts();
-  if (currentScreen === 'settings') renderAlarmsScreen();
+  if (currentScreen === 'alarms') renderAlarmsScreen();
 }
 
-function switchSettingsPanel(panel) {
-  currentSettingsPanel = panel;
-  document.querySelectorAll('.subnav-btn').forEach((btn) => {
-    const on = btn.dataset.settingsPanel === panel;
-    btn.classList.toggle('active', on);
-    btn.setAttribute('aria-selected', on ? 'true' : 'false');
-  });
-  document.querySelectorAll('.settings-panel').forEach((el) => {
-    el.classList.toggle('active', el.id === `settings-panel-${panel}`);
-  });
-  if (panel === 'alarms') renderAlarmsScreen();
-  if (panel === 'sync') updateCloudBanner();
-}
-
-function switchScreen(name, settingsPanel) {
+function switchScreen(name) {
   currentScreen = name;
   document.querySelectorAll('.screen').forEach((el) => el.classList.remove('active'));
-  document.querySelectorAll('.nav-item, .desktop-nav-item').forEach((el) => {
+  document.querySelectorAll('.tab').forEach((el) => {
     el.classList.toggle('active', el.dataset.screen === name);
     el.setAttribute('aria-selected', el.dataset.screen === name ? 'true' : 'false');
   });
   document.getElementById(`screen-${name}`).classList.add('active');
-  if (name === 'settings') switchSettingsPanel(settingsPanel || currentSettingsPanel);
   refreshUI();
 }
 
@@ -201,55 +184,23 @@ function renderEntryAlerts() {
     due
       .map(
         (d) =>
-          `<div class="alert warning"><span>⚠</span><span><strong>${escapeHtml(d.label)}</strong> — vencido (${formatNumber(d.kmOver)} km). <a href="#" class="link-alarms" data-goto-alarms>Config</a></span></div>`
+          `<div class="alert warning"><span>⚠</span><span><strong>${escapeHtml(d.label)}</strong> — vencido (${formatNumber(d.kmOver)} km além do intervalo). Última manutenção em ${formatNumber(d.lastServiceKm)} km. <a href="#" class="link-alarms" data-goto-alarms>Ver alarmes</a></span></div>`
       )
       .join('');
-}
-
-function fillRowActionsHtml(row) {
-  const obsLabel = row.obs?.trim() ? row.obs.trim() : 'OBS';
-  const obsClass = row.obs?.trim() ? 'has-note' : '';
-  return `
-    <button type="button" class="btn obs ${obsClass}" data-obs-id="${row.id}">${escapeHtml(obsLabel)}</button>
-    <button type="button" class="btn-icon" data-edit-fill="${row.id}" title="Editar">✎</button>
-    <button type="button" class="btn-icon" data-delete-id="${row.id}" title="Excluir">×</button>`;
 }
 
 function renderTable() {
   const fills = enrichFills(getFills());
   const tbody = document.getElementById('data-tbody');
-  const cards = document.getElementById('fill-cards');
   const empty = document.getElementById('table-empty');
 
   if (!fills.length) {
     tbody.innerHTML = '';
-    cards.innerHTML = '';
     empty.classList.remove('hidden');
     return;
   }
 
   empty.classList.add('hidden');
-
-  cards.innerHTML = fills
-    .map((row) => {
-      const price = row.pricePerLiter != null ? `R$ ${formatNumber(row.pricePerLiter, 2)}/L` : '—';
-      const cons = row.consumption != null ? `${formatNumber(row.consumption, 1)} km/L` : '—';
-      return `<article class="fill-card" data-id="${row.id}">
-        <div class="fill-card-main">
-          <time>${formatDateTime(row.datetime)}</time>
-          <strong>${formatNumber(row.mileage)} km</strong>
-        </div>
-        <div class="fill-card-stats">
-          <span>${formatNumber(row.liters, 1)} L</span>
-          <span>R$ ${formatMoney(row.amount)}</span>
-          <span>${price}</span>
-          <span>${cons}</span>
-        </div>
-        <div class="fill-card-actions">${fillRowActionsHtml(row)}</div>
-      </article>`;
-    })
-    .join('');
-
   tbody.innerHTML = fills
     .map((row) => {
       const price = row.pricePerLiter != null ? `R$ ${formatNumber(row.pricePerLiter, 3)}` : '—';
@@ -668,12 +619,8 @@ async function importBackup(file) {
   alert('Backup importado com sucesso.');
 }
 
-document.querySelectorAll('.nav-item, .desktop-nav-item').forEach((item) => {
-  item.addEventListener('click', () => switchScreen(item.dataset.screen));
-});
-
-document.querySelectorAll('.subnav-btn').forEach((btn) => {
-  btn.addEventListener('click', () => switchSettingsPanel(btn.dataset.settingsPanel));
+document.querySelectorAll('.tab').forEach((tab) => {
+  tab.addEventListener('click', () => switchScreen(tab.dataset.screen));
 });
 
 document.getElementById('entry-form').addEventListener('submit', (e) => {
@@ -683,7 +630,7 @@ document.getElementById('entry-form').addEventListener('submit', (e) => {
 
 document.getElementById('btn-add-history').addEventListener('click', () => openFillDialog());
 
-async function handleFillListClick(e) {
+document.getElementById('data-tbody').addEventListener('click', async (e) => {
   const obsBtn = e.target.closest('[data-obs-id]');
   if (obsBtn) { openObsDialog(obsBtn.dataset.obsId); return; }
 
@@ -700,10 +647,7 @@ async function handleFillListClick(e) {
       alert(err.message);
     }
   }
-}
-
-document.getElementById('data-tbody').addEventListener('click', handleFillListClick);
-document.getElementById('fill-cards').addEventListener('click', handleFillListClick);
+});
 
 document.getElementById('obs-form').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -749,7 +693,7 @@ document.getElementById('alarms-list').addEventListener('click', (e) => {
 
 document.getElementById('entry-alerts').addEventListener('click', (e) => {
   const link = e.target.closest('[data-goto-alarms]');
-  if (link) { e.preventDefault(); switchScreen('settings', 'alarms'); }
+  if (link) { e.preventDefault(); switchScreen('alarms'); }
 });
 
 document.getElementById('btn-copy-sync').addEventListener('click', async () => {

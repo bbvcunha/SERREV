@@ -215,18 +215,33 @@ function escreverAbastecimentos_(fills) {
 function lerAlarmes_() {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ABAS.ALARMS);
   const rows = sheet.getDataRange().getValues();
+  const header = rows.length ? rows[0].map(String) : [];
+  const formatoNovo = header.indexOf('intervalo_meses') !== -1;
   const out = [];
+
   for (let i = 1; i < rows.length; i++) {
     const r = rows[i];
     if (!r[0]) continue;
-    out.push({
-      id: String(r[0]),
-      label: String(r[1]),
-      intervalKm: Number(r[2]) || 0,
-      intervalMonths: Number(r[3]) || 0,
-      lastServiceKm: Number(r[4]) || 0,
-      lastServiceDate: r[5] ? String(r[5]).slice(0, 10) : '',
-    });
+
+    if (formatoNovo) {
+      out.push({
+        id: String(r[0]),
+        label: String(r[1]),
+        intervalKm: Number(r[2]) || 0,
+        intervalMonths: Number(r[3]) || 0,
+        lastServiceKm: Number(r[4]) || 0,
+        lastServiceDate: r[5] ? String(r[5]).slice(0, 10) : '',
+      });
+    } else {
+      out.push({
+        id: String(r[0]),
+        label: String(r[1]),
+        intervalKm: Number(r[2]) || 0,
+        intervalMonths: 0,
+        lastServiceKm: Number(r[3]) || 0,
+        lastServiceDate: '',
+      });
+    }
   }
   return out;
 }

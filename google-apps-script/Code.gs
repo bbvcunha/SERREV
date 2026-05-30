@@ -6,6 +6,7 @@
 const ABAS = {
   FILLS: 'Abastecimentos',
   ALARMS: 'Alarmes',
+  LOGS: 'Manutencoes',
   CONFIG: 'Config',
 };
 
@@ -42,6 +43,7 @@ function handleRequest(params) {
       ok: true,
       fills: lerAbastecimentos_(),
       maintenance: lerAlarmes_(),
+      serviceLogs: lerManutencoes_(),
       updatedAt: lerConfig_('updatedAt') || '',
       spreadsheetUrl: SpreadsheetApp.getActiveSpreadsheet().getUrl(),
     };
@@ -51,8 +53,10 @@ function handleRequest(params) {
     validarSyncId_(syncId, true);
     const fills = JSON.parse(params.fills || '[]');
     const maintenance = JSON.parse(params.maintenance || '[]');
+    const serviceLogs = JSON.parse(params.serviceLogs || '[]');
     escreverAbastecimentos_(fills);
     escreverAlarmes_(maintenance);
+    escreverManutencoes_(serviceLogs);
     definirConfig_('syncId', syncId);
     definirConfig_('updatedAt', new Date().toISOString());
     return {
@@ -118,6 +122,15 @@ function instalarPlanilha() {
     'intervalo_meses',
     'ultima_manutencao_km',
     'ultima_manutencao_data',
+  ]);
+
+  criarAbaSeNaoExiste_(ABAS.LOGS, [
+    'id',
+    'data',
+    'local',
+    'km',
+    'comentarios',
+    'realizada',
   ]);
 
   const cfg = ss.getSheetByName(ABAS.CONFIG);
@@ -267,6 +280,57 @@ function escreverAlarmes_(items) {
     a.intervalMonths || 0,
     a.lastServiceKm || 0,
     a.lastServiceDate || '',
+  ]);
+  sheet.getRange(2, 1, rows.length + 1, header.length).setValues(rows);
+}
+
+function lerManutencoes_() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ABAS.LOGS);
+  if (!sheet) return [];
+  const rows = sheet.getDataRange().getValues();
+  const out = [];
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i];
+    if (!r[0]) continue;
+    const realizada = r[5];
+    out.push({
+      id: String(r[0]),
+      date: r[1] ? String(r[1]).slice(0, 10) : '',
+      location: String(r[2] || ''),
+      mileage: Number(r[3]) || 0,
+      notes: String(r[4] || ''),
+      done: realizada === true || String(realizada).toLowerCase() === 'sim' || realizada === 1,
+    });
+  }
+  return out;
+}
+
+function escreverManutencoes_(items) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(ABAS.LOGS);
+  if (!sheet) {
+    criarAbaSeNaoExiste_(ABAS.LOGS, [
+      'id',
+      'data',
+      'local',
+      'km',
+      'comentarios',
+      'realizada',
+    ]);
+    sheet = ss.getSheetByName(ABAS.LOGS);
+  }
+  const header = ['id', 'data', 'local', 'km', 'comentarios', 'realizada'];
+  sheet.clear();
+  sheet.getRange(1, 1, 1, header.length).setValues([header]);
+  sheet.setFrozenRows(1);
+  if (!items.length) return;
+  const rows = items.map((m) => [
+    m.id,
+    m.date || '',
+    m.location || '',
+    m.mileage || 0,
+    m.notes || '',
+    m.done ? 'sim' : 'nao',
   ]);
   sheet.getRange(2, 1, rows.length + 1, header.length).setValues(rows);
 }

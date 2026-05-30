@@ -1,12 +1,14 @@
 const STORAGE_SYNC_ID = 'carKpi_syncId';
 const STORAGE_FILLS = 'carKpi_fills';
 const STORAGE_MAINT = 'carKpi_maintenance';
+const STORAGE_SERVICE_LOGS = 'carKpi_serviceLogs';
 const STORAGE_LEGACY_MIGRATED = 'carKpi_cloudMigrated';
 const STORAGE_SHEET_URL = 'carKpi_spreadsheetUrl';
 
 const DataStore = {
   fills: [],
   maintenance: [],
+  serviceLogs: [],
   syncId: null,
   cloudEnabled: false,
   cloudReady: false,
@@ -24,6 +26,7 @@ const DataStore = {
     return {
       fills: [...this.fills],
       maintenance: [...this.maintenance],
+      serviceLogs: [...this.serviceLogs],
       syncId: this.syncId,
       cloudEnabled: this.cloudEnabled,
       cloudReady: this.cloudReady,
@@ -60,6 +63,7 @@ const DataStore = {
     try {
       localStorage.setItem(STORAGE_FILLS, JSON.stringify(this.fills));
       localStorage.setItem(STORAGE_MAINT, JSON.stringify(this.maintenance));
+      localStorage.setItem(STORAGE_SERVICE_LOGS, JSON.stringify(this.serviceLogs));
       if (this.syncId) localStorage.setItem(STORAGE_SYNC_ID, this.syncId);
       if (this.spreadsheetUrl) localStorage.setItem(STORAGE_SHEET_URL, this.spreadsheetUrl);
       return true;
@@ -73,10 +77,12 @@ const DataStore = {
     try {
       const fillsRaw = localStorage.getItem(STORAGE_FILLS);
       const maintRaw = localStorage.getItem(STORAGE_MAINT);
+      const logsRaw = localStorage.getItem(STORAGE_SERVICE_LOGS);
       const syncRaw = localStorage.getItem(STORAGE_SYNC_ID);
       const sheetUrl = localStorage.getItem(STORAGE_SHEET_URL);
       if (fillsRaw) this.fills = JSON.parse(fillsRaw);
       if (maintRaw) this.maintenance = JSON.parse(maintRaw);
+      if (logsRaw) this.serviceLogs = JSON.parse(logsRaw);
       if (syncRaw) this.syncId = syncRaw;
       if (sheetUrl) this.spreadsheetUrl = sheetUrl;
       const cfg = this.getSheetsConfig();
@@ -129,6 +135,7 @@ const DataStore = {
         secret: cfg.apiSecret || '',
         fills: JSON.stringify(this.fills),
         maintenance: JSON.stringify(this.maintenance),
+        serviceLogs: JSON.stringify(this.serviceLogs),
       });
     }
 
@@ -171,12 +178,16 @@ const DataStore = {
   applyRemoteData(data) {
     const remoteFills = data.fills || [];
     const remoteMaint = data.maintenance || [];
-    const localHasData = this.fills.length > 0 || this.maintenance.length > 0;
-    const remoteHasData = remoteFills.length > 0 || remoteMaint.length > 0;
+    const remoteLogs = data.serviceLogs || [];
+    const localHasData =
+      this.fills.length > 0 || this.maintenance.length > 0 || this.serviceLogs.length > 0;
+    const remoteHasData =
+      remoteFills.length > 0 || remoteMaint.length > 0 || remoteLogs.length > 0;
 
     if (!localHasData && remoteHasData) {
       this.fills = remoteFills;
       this.maintenance = remoteMaint;
+      this.serviceLogs = remoteLogs;
     } else if (localHasData && !remoteHasData) {
       return 'push';
     } else if (localHasData && remoteHasData) {
@@ -184,11 +195,13 @@ const DataStore = {
       if (merged) {
         this.fills = this.mergeById(this.fills, remoteFills);
         this.maintenance = this.mergeById(this.maintenance, remoteMaint);
+        this.serviceLogs = this.mergeById(this.serviceLogs, remoteLogs);
         localStorage.setItem(STORAGE_LEGACY_MIGRATED, '1');
         return 'push';
       }
       this.fills = remoteFills;
       this.maintenance = remoteMaint;
+      this.serviceLogs = remoteLogs;
     }
 
     if (data.spreadsheetUrl) this.spreadsheetUrl = data.spreadsheetUrl;

@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="SErreV" />
   <title>SErreV</title>
-  <link rel="stylesheet" href="styles.css?v=9" />
+  <link rel="stylesheet" href="styles.css?v=10" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
@@ -18,6 +18,7 @@
       <button type="button" class="tab active" data-screen="entry" role="tab" aria-selected="true"><span class="tab-emoji" aria-hidden="true">⛽</span><span class="tab-label">Abast.</span></button>
       <button type="button" class="tab" data-screen="table" role="tab"><span class="tab-emoji" aria-hidden="true">📋</span><span class="tab-label">Dados</span></button>
       <button type="button" class="tab" data-screen="charts" role="tab"><span class="tab-emoji" aria-hidden="true">📊</span><span class="tab-label">KPIs</span></button>
+      <button type="button" class="tab" data-screen="services" role="tab"><span class="tab-emoji" aria-hidden="true">🔧</span><span class="tab-label">Manut.</span></button>
       <button type="button" class="tab" data-screen="settings" role="tab"><span class="tab-emoji" aria-hidden="true">⚙️</span><span class="tab-label">Config</span></button>
     </nav>
   </header>
@@ -109,6 +110,20 @@
         </div>
       </div>
       <p id="charts-empty" class="empty-state">Cadastre pelo menos dois abastecimentos para ver os KPIs.</p>
+    </section>
+
+    <section id="screen-services" class="screen">
+      <div class="services-header">
+        <p class="hint compact-hint">Registro de manutenções feitas e previstas.</p>
+        <button type="button" class="btn primary btn-sm" id="btn-add-service">+ Manutenção</button>
+      </div>
+      <nav class="settings-subnav" role="tablist" aria-label="Filtrar manutenções">
+        <button type="button" class="subnav-btn active" data-service-filter="pending" role="tab" aria-selected="true">A realizar</button>
+        <button type="button" class="subnav-btn" data-service-filter="done" role="tab">Realizadas</button>
+        <button type="button" class="subnav-btn" data-service-filter="all" role="tab">Todas</button>
+      </nav>
+      <div id="service-list" class="service-list"></div>
+      <p id="service-empty" class="empty-state hidden">Nenhuma manutenção nesta lista.</p>
     </section>
 
     <section id="screen-settings" class="screen">
@@ -248,8 +263,39 @@
     </form>
   </dialog>
 
-  <script src="sheets-config.js?v=9"></script>
-  <script src="sync.js?v=9"></script>
-  <script src="app.js?v=9"></script>
+  <dialog id="service-dialog">
+    <form method="dialog" id="service-form">
+      <h3 id="service-dialog-title">Nova manutenção</h3>
+      <label>
+        Data
+        <input type="date" id="service-date" required />
+      </label>
+      <label>
+        Local
+        <input type="text" id="service-location" maxlength="120" placeholder="ex.: Oficina Centro, Posto BR…" />
+      </label>
+      <label>
+        Quilometragem (km)
+        <input type="number" id="service-mileage" min="0" step="1" required placeholder="ex.: 125430" />
+      </label>
+      <label>
+        Comentários
+        <textarea id="service-notes" rows="4" placeholder="Serviços, peças a trocar, observações…"></textarea>
+      </label>
+      <label class="toggle-row">
+        <span class="toggle-label">Manutenção realizada</span>
+        <input type="checkbox" id="service-done" class="toggle-input" />
+        <span class="toggle-switch" aria-hidden="true"></span>
+      </label>
+      <div class="dialog-actions">
+        <button type="button" class="btn secondary" id="service-cancel">Cancelar</button>
+        <button type="submit" class="btn primary">Salvar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="sheets-config.js?v=10"></script>
+  <script src="sync.js?v=10"></script>
+  <script src="app.js?v=10"></script>
 </body>
 </html>

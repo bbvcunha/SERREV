@@ -13,7 +13,8 @@ let editingObsId = null;
 let editingAlarmId = null;
 let editingFillId = null;
 let currentScreen = 'entry';
-let currentSettingsPanel = 'alarms';
+let editingServiceId = null;
+let currentServiceFilter = 'pending';
 
 function getFills() {
   return DataStore.fills;
@@ -23,8 +24,12 @@ function getMaintenance() {
   return DataStore.maintenance.length ? DataStore.maintenance : structuredClone(DEFAULT_MAINTENANCE);
 }
 
-async function persistMaintenance(items) {
-  DataStore.maintenance = items;
+function getServiceLogs() {
+  return DataStore.serviceLogs || [];
+}
+
+async function persistServiceLogs(logs) {
+  DataStore.serviceLogs = logs;
   await DataStore.persist();
 }
 
@@ -217,6 +222,7 @@ function refreshUI() {
   if (currentScreen === 'entry') renderEntryAlerts();
   if (currentScreen === 'table') renderTable();
   if (currentScreen === 'charts') renderCharts();
+  if (currentScreen === 'services') renderServicesScreen();
   if (currentScreen === 'settings' && currentSettingsPanel === 'alarms') renderAlarmsScreen();
   if (currentScreen === 'settings' && currentSettingsPanel === 'account') updateCloudBanner();
 }
@@ -517,6 +523,160 @@ function renderAlarmsScreen() {
         </article>`;
     })
     .join('');
+}
+
+function sortServiceLogs(logs) {
+  return [...logs].sort((a, b) => {
+    if (a.done !== b.done) return a.done ? 1 : -1;
+    return new Date(b.date) - new Date(a.date);
+  });
+}
+
+function filterServiceLogs(logs, filter) {
+  if (filter === 'done') return logs.filter((l) => l.done);
+  if (filter === 'pending') return logs.filter((l) => !l.done);
+  return logs;
+}
+
+function renderServicesScreen() {
+  const listEl = document.getElementById('service-list');
+  const emptyEl = document.getElementById('service-empty');
+  const logs = sortServiceLogs(filterServiceLogs(getServiceLogs(), currentServiceFilter));
+
+  if (!logs.length) {
+    listEl.innerHTML = '';
+    emptyEl.classList.remove('hidden');
+    return;
+  }
+
+  emptyEl.classList.add('hidden');
+  listEl.innerHTML = logs
+    .map((item) => {
+      const statusClass = item.done ? 'service-done' : 'service-pending';
+      const statusLabel = item.done ? 'Realizada' : 'A realizar';
+      const notes = item.notes?.trim()
+        ? `<p class="service-notes">${escapeHtml(item.notes.trim())}</p>`
+        : '';
+
+      return `
+        <article class="card service-card ${statusClass}" data-service-id="${item.id}">
+          <div class="service-card-head">
+            <div>
+              <time class="service-date">${formatDateShort(item.date)}</time>
+              <span class="service-badge">${statusLabel}</span>
+            </div>
+            <div class="service-actions">
+              <button type="button" class="btn secondary btn-sm" data-edit-service="${item.id}">Editar</button>
+              <button type="button" class="btn danger-outline btn-sm" data-delete-service="${item.id}">×</button>
+            </div>
+          </div>
+          <dl class="service-details">
+            <div><dt>Local</dt><dd>${item.location ? escapeHtml(item.location) : '—'}</dd></div>
+            <div><dt>Km</dt><dd>${formatNumber(item.mileage)}</dd></div>
+          </dl>
+          ${notes}
+          <label class="toggle-row toggle-row-card">
+            <span class="toggle-label">Realizada</span>
+            <input type="checkbox" class="toggle-input service-toggle" data-toggle-service="${item.id}" ${item.done ? 'checked' : ''} />
+            <span class="toggle-switch" aria-hidden="true"></span>
+          </label>
+        </article>`;
+    })
+    .join('');
+}
+
+function switchServiceFilter(filter) {
+  currentServiceFilter = filter;
+  document.querySelectorAll('[data-service-filter]').forEach((btn) => {
+    const on = btn.dataset.serviceFilter === filter;
+    btn.classList.toggle('active', on);
+    btn.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+  renderServicesScreen();
+}
+
+function openServiceDialog(id = null) {
+  editingServiceId = id;
+  const title = document.getElementById('service-dialog-title');
+  const dateInput = document.getElementById('service-date');
+  const locInput = document.getElementById('service-location');
+  const kmInput = document.getElementById('service-mileage');
+  const notesInput = document.getElementById('service-notes');
+  const doneInput = document.getElementById('service-done');
+
+  if (id) {
+    const item = getServiceLogs().find((s) => s.id === id);
+    if (!item) return;
+    title.textContent = 'Editar manutenção';
+    dateInput.value = item.date || '';
+    locInput.value = item.location || '';
+    kmInput.value = item.mileage;
+    notesInput.value = item.notes || '';
+    doneInput.checked = !!item.done;
+  } else {
+    title.textContent = 'Nova manutenção';
+    dateInput.value = new Date().toISOString().slice(0, 10);
+    locInput.value = '';
+    const mileage = latestMileage(getFills());
+    kmInput.value = mileage > 0 ? mileage : '';
+    notesInput.value = '';
+    doneInput.checked = false;
+  }
+
+  document.getElementById('service-dialog').showModal();
+  locInput.focus();
+}
+
+async function saveServiceFromForm() {
+  const date = document.getElementById('service-date').value;
+  const location = document.getElementById('service-location').value.trim();
+  const mileage = parseFloat(document.getElementById('service-mileage').value);
+  const notes = document.getElementById('service-notes').value.trim();
+  const done = document.getElementById('service-done').checked;
+
+  if (!date) {
+    alert('Informe a data.');
+    return false;
+  }
+  if (mileage < 0 || Number.isNaN(mileage)) {
+    alert('Informe a quilometragem.');
+    return false;
+  }
+
+  const record = { date, location, mileage, notes, done };
+  const logs = [...getServiceLogs()];
+
+  if (editingServiceId) {
+    const idx = logs.findIndex((s) => s.id === editingServiceId);
+    if (idx === -1) return false;
+    logs[idx] = { ...logs[idx], ...record };
+  } else {
+    logs.push({ id: crypto.randomUUID(), ...record });
+  }
+
+  try {
+    await persistServiceLogs(logs);
+    editingServiceId = null;
+    refreshUI();
+    return true;
+  } catch (e) {
+    alert(e.message || 'Erro ao salvar.');
+    return false;
+  }
+}
+
+async function toggleServiceDone(id, done) {
+  const logs = [...getServiceLogs()];
+  const idx = logs.findIndex((s) => s.id === id);
+  if (idx === -1) return;
+  logs[idx].done = done;
+  await persistServiceLogs(logs);
+  refreshUI();
+}
+
+async function deleteService(id) {
+  await persistServiceLogs(getServiceLogs().filter((s) => s.id !== id));
+  refreshUI();
 }
 
 function destroyCharts() {
@@ -1042,6 +1202,7 @@ function exportBackup() {
     syncId: DataStore.syncId,
     fills: getFills(),
     maintenance: getMaintenance(),
+    serviceLogs: getServiceLogs(),
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
@@ -1065,6 +1226,9 @@ async function importBackup(file) {
   if (data.maintenance?.length) {
     DataStore.maintenance = DataStore.mergeById(getMaintenance(), data.maintenance);
   }
+  if (data.serviceLogs?.length) {
+    DataStore.serviceLogs = DataStore.mergeById(getServiceLogs(), data.serviceLogs);
+  }
   if (data.syncId) DataStore.setSyncId(data.syncId);
 
   await DataStore.persist();
@@ -1076,8 +1240,44 @@ document.querySelectorAll('.tab').forEach((tab) => {
   tab.addEventListener('click', () => switchScreen(tab.dataset.screen));
 });
 
-document.querySelectorAll('.subnav-btn').forEach((btn) => {
+document.querySelectorAll('[data-settings-panel]').forEach((btn) => {
   btn.addEventListener('click', () => switchSettingsPanel(btn.dataset.settingsPanel));
+});
+
+document.querySelectorAll('[data-service-filter]').forEach((btn) => {
+  btn.addEventListener('click', () => switchServiceFilter(btn.dataset.serviceFilter));
+});
+
+document.getElementById('btn-add-service').addEventListener('click', () => openServiceDialog());
+
+document.getElementById('service-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (await saveServiceFromForm()) document.getElementById('service-dialog').close();
+});
+
+document.getElementById('service-cancel').addEventListener('click', () => {
+  editingServiceId = null;
+  document.getElementById('service-dialog').close();
+});
+
+document.getElementById('service-list').addEventListener('change', async (e) => {
+  const toggle = e.target.closest('.service-toggle');
+  if (!toggle) return;
+  await toggleServiceDone(toggle.dataset.toggleService, toggle.checked);
+});
+
+document.getElementById('service-list').addEventListener('click', async (e) => {
+  if (e.target.closest('.toggle-row-card')) return;
+
+  const editBtn = e.target.closest('[data-edit-service]');
+  if (editBtn) {
+    openServiceDialog(editBtn.dataset.editService);
+    return;
+  }
+  const delBtn = e.target.closest('[data-delete-service]');
+  if (delBtn && confirm('Excluir esta manutenção?')) {
+    await deleteService(delBtn.dataset.deleteService);
+  }
 });
 
 document.getElementById('entry-form').addEventListener('submit', (e) => {

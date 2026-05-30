@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="SErreV" />
   <title>SErreV</title>
-  <link rel="stylesheet" href="styles.css?v=8" />
+  <link rel="stylesheet" href="styles.css?v=9" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
@@ -120,7 +120,7 @@
       <div id="settings-panel-alarms" class="settings-panel active">
         <div class="alarms-header">
           <div>
-            <p class="hint compact-hint">Lembretes por quilometragem do último abastecimento.</p>
+            <p class="hint compact-hint">Por km, por tempo, ou ambos (vence o que ocorrer primeiro).</p>
           </div>
           <button type="button" class="btn primary alarms-add-btn" id="btn-add-alarm">+ Alarme</button>
         </div>
@@ -218,14 +218,29 @@
         Nome do alarme
         <input type="text" id="alarm-label" required maxlength="80" placeholder="ex.: Troca de óleo" />
       </label>
-      <label>
-        Intervalo (km)
-        <input type="number" id="alarm-interval" min="100" step="100" required placeholder="ex.: 10000" />
-      </label>
-      <label>
-        Última manutenção em (km)
-        <input type="number" id="alarm-last-service" min="0" step="1" required value="0" />
-      </label>
+      <fieldset class="alarm-fieldset">
+        <legend>Intervalo (use km, tempo ou os dois)</legend>
+        <label>
+          Quilometragem (km)
+          <input type="number" id="alarm-interval-km" min="0" step="100" placeholder="ex.: 10000 · 0 = desligado" />
+        </label>
+        <label>
+          Tempo (meses)
+          <input type="number" id="alarm-interval-months" min="0" max="120" step="1" placeholder="ex.: 12 = 1 ano · 0 = desligado" />
+        </label>
+      </fieldset>
+      <fieldset class="alarm-fieldset">
+        <legend>Última manutenção</legend>
+        <label>
+          Quilometragem (km)
+          <input type="number" id="alarm-last-service-km" min="0" step="1" required value="0" />
+        </label>
+        <label>
+          Data
+          <input type="date" id="alarm-last-service-date" />
+          <span class="field-hint">Obrigatória se houver intervalo por tempo</span>
+        </label>
+      </fieldset>
       <div class="dialog-actions">
         <button type="button" class="btn secondary" id="alarm-cancel">Cancelar</button>
         <button type="submit" class="btn primary">Salvar alarme</button>
@@ -233,8 +248,8 @@
     </form>
   </dialog>
 
-  <script src="sheets-config.js?v=8"></script>
-  <script src="sync.js?v=8"></script>
-  <script src="app.js?v=8"></script>
+  <script src="sheets-config.js?v=9"></script>
+  <script src="sync.js?v=9"></script>
+  <script src="app.js?v=9"></script>
 </body>
 </html>

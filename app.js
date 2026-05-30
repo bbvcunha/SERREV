@@ -1,11 +1,11 @@
 const LOCALE = 'pt-BR';
 
 const DEFAULT_MAINTENANCE = [
-  { id: 'oil', label: 'Óleo do motor', intervalKm: 10000, lastServiceKm: 0 },
-  { id: 'tires', label: 'Pneus', intervalKm: 40000, lastServiceKm: 0 },
-  { id: 'belt', label: 'Correia (dentada / alternador)', intervalKm: 80000, lastServiceKm: 0 },
-  { id: 'filters', label: 'Filtros de ar e cabine', intervalKm: 20000, lastServiceKm: 0 },
-  { id: 'brakes', label: 'Freios (fluido / pastilhas)', intervalKm: 30000, lastServiceKm: 0 },
+  { id: 'oil', label: 'Óleo do motor', intervalKm: 10000, intervalMonths: 12, lastServiceKm: 0, lastServiceDate: '' },
+  { id: 'tires', label: 'Pneus', intervalKm: 40000, intervalMonths: 0, lastServiceKm: 0, lastServiceDate: '' },
+  { id: 'belt', label: 'Correia (dentada / alternador)', intervalKm: 80000, intervalMonths: 0, lastServiceKm: 0, lastServiceDate: '' },
+  { id: 'filters', label: 'Filtros de ar e cabine', intervalKm: 20000, intervalMonths: 12, lastServiceKm: 0, lastServiceDate: '' },
+  { id: 'brakes', label: 'Freios (fluido / pastilhas)', intervalKm: 30000, intervalMonths: 24, lastServiceKm: 0, lastServiceDate: '' },
 ];
 
 let chartInstances = {};
@@ -247,16 +247,143 @@ function switchScreen(name, settingsPanel) {
   refreshUI();
 }
 
-function computeAlarmStatus(item, currentKm) {
-  const kmSince = currentKm - (item.lastServiceKm || 0);
-  const remaining = (item.intervalKm || 0) - kmSince;
+function normalizeAlarm(item) {
   return {
     ...item,
-    kmSince,
-    remaining,
-    kmOver: remaining < 0 ? Math.abs(remaining) : 0,
-    due: item.intervalKm > 0 && currentKm > 0 && remaining <= 0,
+    intervalKm: Number(item.intervalKm) || 0,
+    intervalMonths: Number(item.intervalMonths) || 0,
+    lastServiceKm: Number(item.lastServiceKm) || 0,
+    lastServiceDate: item.lastServiceDate || '',
   };
+}
+
+function addMonthsToDate(iso, months) {
+  const d = new Date(`${iso}T12:00:00`);
+  const day = d.getDate();
+  d.setMonth(d.getMonth() + months);
+  if (d.getDate() < day) d.setDate(0);
+  return d;
+}
+
+function formatMonthsInterval(months) {
+  if (!months) return '';
+  if (months === 12) return '1 ano';
+  if (months % 12 === 0) {
+    const y = months / 12;
+    return `${y} ${y === 1 ? 'ano' : 'anos'}`;
+  }
+  if (months > 12) {
+    const y = Math.floor(months / 12);
+    const m = months % 12;
+    return m ? `${y} ${y === 1 ? 'ano' : 'anos'} e ${m} meses` : `${y} anos`;
+  }
+  return `${months} ${months === 1 ? 'mês' : 'meses'}`;
+}
+
+function formatDateShort(iso) {
+  if (!iso) return '';
+  return new Date(`${iso}T12:00:00`).toLocaleDateString(LOCALE);
+}
+
+function formatTimeRemaining(days) {
+  const d = Math.max(0, Math.ceil(days));
+  if (d >= 365) {
+    const y = Math.floor(d / 365);
+    const rest = Math.floor((d % 365) / 30);
+    return rest ? `${y} ${y === 1 ? 'ano' : 'anos'} e ${rest} meses` : `${y} ${y === 1 ? 'ano' : 'anos'}`;
+  }
+  if (d >= 30) {
+    const m = Math.round(d / 30);
+    return `${m} ${m === 1 ? 'mês' : 'meses'}`;
+  }
+  return `${d} ${d === 1 ? 'dia' : 'dias'}`;
+}
+
+function formatAlarmInterval(item) {
+  const a = normalizeAlarm(item);
+  const parts = [];
+  if (a.intervalKm > 0) parts.push(`${formatNumber(a.intervalKm)} km`);
+  if (a.intervalMonths > 0) parts.push(formatMonthsInterval(a.intervalMonths));
+  return parts.length ? parts.join(' ou ') : '—';
+}
+
+function formatLastServiceDisplay(item) {
+  const a = normalizeAlarm(item);
+  const parts = [];
+  if (a.intervalKm > 0 || a.lastServiceKm) parts.push(`${formatNumber(a.lastServiceKm)} km`);
+  if (a.lastServiceDate) parts.push(formatDateShort(a.lastServiceDate));
+  return parts.length ? parts.join(' · ') : '—';
+}
+
+function computeAlarmStatus(item, currentKm, refDate = new Date()) {
+  const a = normalizeAlarm(item);
+  const hasKm = a.intervalKm > 0;
+  const hasTime = a.intervalMonths > 0;
+
+  let kmDue = false;
+  let kmRemaining = null;
+  let kmOver = 0;
+
+  if (hasKm && currentKm > 0) {
+    const kmSince = currentKm - a.lastServiceKm;
+    kmRemaining = a.intervalKm - kmSince;
+    kmDue = kmRemaining <= 0;
+    kmOver = kmDue ? Math.abs(kmRemaining) : 0;
+  }
+
+  let timeDue = false;
+  let daysRemaining = null;
+  let daysOver = 0;
+  let needsDate = hasTime && !a.lastServiceDate;
+
+  if (hasTime && a.lastServiceDate) {
+    const dueDate = addMonthsToDate(a.lastServiceDate, a.intervalMonths);
+    const ref = new Date(refDate.getFullYear(), refDate.getMonth(), refDate.getDate(), 12);
+    daysRemaining = Math.ceil((dueDate - ref) / 86400000);
+    timeDue = daysRemaining <= 0;
+    daysOver = timeDue ? Math.abs(daysRemaining) : 0;
+  }
+
+  const due = (hasKm && currentKm > 0 && kmDue) || (hasTime && a.lastServiceDate && timeDue);
+
+  return {
+    ...a,
+    hasKm,
+    hasTime,
+    kmDue,
+    timeDue,
+    due,
+    kmRemaining,
+    kmOver,
+    daysRemaining,
+    daysOver,
+    needsDate,
+  };
+}
+
+function formatAlarmDueReason(status) {
+  const parts = [];
+  if (status.kmDue) parts.push(`${formatNumber(status.kmOver)} km além`);
+  if (status.timeDue) parts.push(`${formatTimeRemaining(status.daysOver)} além`);
+  return parts.join(' · ');
+}
+
+function formatAlarmStatusText(status, mileage) {
+  if (status.needsDate) return 'Informe a data da última manutenção (alarme por tempo).';
+  if (!mileage && status.hasKm && !status.hasTime) return 'Aguardando abastecimento para calcular por km.';
+  if (status.due) return `Vencido — ${formatAlarmDueReason(status)}`;
+  const parts = [];
+  if (status.hasKm && status.kmRemaining != null && mileage > 0) {
+    parts.push(`${formatNumber(status.kmRemaining)} km`);
+  }
+  if (status.hasTime && status.daysRemaining != null) {
+    parts.push(formatTimeRemaining(status.daysRemaining));
+  }
+  if (!parts.length) {
+    if (status.hasKm && !mileage) return 'Cadastre abastecimento para calcular por km.';
+    return 'Configure intervalo por km ou tempo.';
+  }
+  return `Faltam ${parts.join(' · ')}`;
 }
 
 function getDueMaintenance(maintenance, currentKm) {
@@ -280,7 +407,7 @@ function renderEntryAlerts() {
     due
       .map(
         (d) =>
-          `<div class="alert warning"><span>⚠</span><span><strong>${escapeHtml(d.label)}</strong> — vencido (${formatNumber(d.kmOver)} km). <a href="#" class="link-alarms" data-goto-alarms>Config → Alarmes</a></span></div>`
+          `<div class="alert warning"><span>⚠</span><span><strong>${escapeHtml(d.label)}</strong> — vencido (${formatAlarmDueReason(d)}). <a href="#" class="link-alarms" data-goto-alarms>Config → Alarmes</a></span></div>`
       )
       .join('');
 }
@@ -336,8 +463,8 @@ function renderAlarmsScreen() {
 
   mileageEl.textContent =
     mileage > 0
-      ? `Quilometragem atual (último abastecimento): ${formatNumber(mileage)} km`
-      : 'Cadastre um abastecimento para calcular os alarmes pela quilometragem.';
+      ? `Referência: ${formatNumber(mileage)} km · ${new Date().toLocaleDateString(LOCALE)}`
+      : 'Cadastre um abastecimento para alarmes por km. Alarmes por tempo usam a data de hoje.';
 
   if (!maintenance.length) {
     summaryEl.innerHTML = '';
@@ -350,14 +477,14 @@ function renderAlarmsScreen() {
 
   if (!mileage) {
     summaryEl.innerHTML =
-      '<div class="alert ok">Configure os alarmes abaixo. Eles serão comparados à quilometragem do último abastecimento.</div>';
+      '<div class="alert ok">Configure os alarmes abaixo. Vencimento por <strong>km</strong> ou <strong>tempo</strong> (o que ocorrer primeiro).</div>';
   } else if (!due.length) {
-    summaryEl.innerHTML = `<div class="alert ok">Nenhum alarme vencido na quilometragem atual (${formatNumber(mileage)} km).</div>`;
+    summaryEl.innerHTML = `<div class="alert ok">Nenhum alarme vencido (${formatNumber(mileage)} km · ${new Date().toLocaleDateString(LOCALE)}).</div>`;
   } else {
     summaryEl.innerHTML = due
       .map(
         (d) =>
-          `<div class="alert warning"><strong>${escapeHtml(d.label)}</strong> está vencido (${formatNumber(d.kmOver)} km além do intervalo programado).</div>`
+          `<div class="alert warning"><strong>${escapeHtml(d.label)}</strong> vencido (${formatAlarmDueReason(d)}).</div>`
       )
       .join('');
   }
@@ -365,11 +492,10 @@ function renderAlarmsScreen() {
   listEl.innerHTML = maintenance
     .map((item) => {
       const status = computeAlarmStatus(item, mileage);
-      const statusClass = status.due ? 'due' : '';
-      let statusText;
-      if (!mileage) statusText = 'Aguardando abastecimento para calcular.';
-      else if (status.due) statusText = `Vencido — ${formatNumber(status.kmOver)} km além do intervalo`;
-      else statusText = `Faltam ${formatNumber(status.remaining)} km para a próxima manutenção`;
+      const statusClass = status.due || status.needsDate ? 'due' : '';
+      const statusText = formatAlarmStatusText(status, mileage);
+      const canMarkDone =
+        (status.hasKm && mileage > 0) || status.hasTime || (!status.hasKm && !status.hasTime);
 
       return `
         <article class="card alarm-card ${status.due ? 'alarm-due' : ''}" data-alarm-id="${item.id}">
@@ -381,12 +507,12 @@ function renderAlarmsScreen() {
             </div>
           </div>
           <dl class="alarm-details">
-            <div><dt>Intervalo</dt><dd>${formatNumber(item.intervalKm)} km</dd></div>
-            <div><dt>Última manutenção</dt><dd>${formatNumber(item.lastServiceKm)} km</dd></div>
+            <div><dt>Intervalo</dt><dd>${formatAlarmInterval(item)}</dd></div>
+            <div><dt>Última manutenção</dt><dd>${formatLastServiceDisplay(item)}</dd></div>
           </dl>
           <p class="maint-status ${statusClass}">${statusText}</p>
-          <button type="button" class="btn secondary btn-sm btn-mark-done" data-mark-done="${item.id}" ${!mileage ? 'disabled' : ''}>
-            Marcar como feito agora (${mileage ? formatNumber(mileage) : '—'} km)
+          <button type="button" class="btn secondary btn-sm btn-mark-done" data-mark-done="${item.id}" ${!canMarkDone ? 'disabled' : ''}>
+            Marcar como feito agora
           </button>
         </article>`;
     })
@@ -761,21 +887,27 @@ function openAlarmDialog(id = null) {
   editingAlarmId = id;
   const title = document.getElementById('alarm-dialog-title');
   const labelInput = document.getElementById('alarm-label');
-  const intervalInput = document.getElementById('alarm-interval');
-  const lastInput = document.getElementById('alarm-last-service');
+  const intervalKmInput = document.getElementById('alarm-interval-km');
+  const intervalMonthsInput = document.getElementById('alarm-interval-months');
+  const lastKmInput = document.getElementById('alarm-last-service-km');
+  const lastDateInput = document.getElementById('alarm-last-service-date');
 
   if (id) {
-    const item = getMaintenance().find((a) => a.id === id);
+    const item = normalizeAlarm(getMaintenance().find((a) => a.id === id));
     if (!item) return;
     title.textContent = 'Editar alarme';
     labelInput.value = item.label;
-    intervalInput.value = item.intervalKm;
-    lastInput.value = item.lastServiceKm;
+    intervalKmInput.value = item.intervalKm || '';
+    intervalMonthsInput.value = item.intervalMonths || '';
+    lastKmInput.value = item.lastServiceKm;
+    lastDateInput.value = item.lastServiceDate || '';
   } else {
     title.textContent = 'Novo alarme';
     labelInput.value = '';
-    intervalInput.value = '';
-    lastInput.value = '0';
+    intervalKmInput.value = '';
+    intervalMonthsInput.value = '';
+    lastKmInput.value = '0';
+    lastDateInput.value = '';
   }
 
   document.getElementById('alarm-dialog').showModal();
@@ -784,21 +916,49 @@ function openAlarmDialog(id = null) {
 
 async function saveAlarmFromForm() {
   const label = document.getElementById('alarm-label').value.trim();
-  const intervalKm = parseFloat(document.getElementById('alarm-interval').value);
-  const lastServiceKm = parseFloat(document.getElementById('alarm-last-service').value);
+  const intervalKm = parseFloat(document.getElementById('alarm-interval-km').value) || 0;
+  const intervalMonths = parseInt(document.getElementById('alarm-interval-months').value, 10) || 0;
+  const lastServiceKm = parseFloat(document.getElementById('alarm-last-service-km').value);
+  const lastServiceDate = document.getElementById('alarm-last-service-date').value;
 
   if (!label) { alert('Informe o nome do alarme.'); return false; }
-  if (!intervalKm || intervalKm < 100) { alert('O intervalo deve ser de pelo menos 100 km.'); return false; }
-  if (lastServiceKm < 0 || Number.isNaN(lastServiceKm)) { alert('Informe a quilometragem da última manutenção.'); return false; }
+  if (intervalKm <= 0 && intervalMonths <= 0) {
+    alert('Informe intervalo por km, por tempo, ou ambos.');
+    return false;
+  }
+  if (intervalKm < 0 || (intervalKm > 0 && intervalKm < 100)) {
+    alert('Intervalo em km deve ser 0 (desligado) ou pelo menos 100 km.');
+    return false;
+  }
+  if (intervalMonths < 0 || intervalMonths > 120) {
+    alert('Intervalo em meses deve ser entre 0 e 120.');
+    return false;
+  }
+  if (lastServiceKm < 0 || Number.isNaN(lastServiceKm)) {
+    alert('Informe a quilometragem da última manutenção.');
+    return false;
+  }
+  if (intervalMonths > 0 && !lastServiceDate) {
+    alert('Para alarme por tempo, informe a data da última manutenção.');
+    return false;
+  }
+
+  const record = {
+    label,
+    intervalKm,
+    intervalMonths,
+    lastServiceKm,
+    lastServiceDate: intervalMonths > 0 ? lastServiceDate : '',
+  };
 
   const items = [...getMaintenance()];
 
   if (editingAlarmId) {
     const idx = items.findIndex((a) => a.id === editingAlarmId);
     if (idx === -1) return false;
-    items[idx] = { ...items[idx], label, intervalKm, lastServiceKm };
+    items[idx] = { ...items[idx], ...record };
   } else {
-    items.push({ id: crypto.randomUUID(), label, intervalKm, lastServiceKm });
+    items.push({ id: crypto.randomUUID(), ...record });
   }
 
   await persistMaintenance(items);
@@ -814,14 +974,22 @@ async function deleteAlarm(id) {
 
 async function markAlarmDone(id) {
   const mileage = latestMileage(getFills());
-  if (!mileage) {
-    alert('Cadastre um abastecimento primeiro para obter a quilometragem atual.');
-    return;
-  }
   const items = [...getMaintenance()];
   const idx = items.findIndex((a) => a.id === id);
   if (idx === -1) return;
-  items[idx].lastServiceKm = mileage;
+  const item = normalizeAlarm(items[idx]);
+
+  if (item.intervalKm > 0) {
+    if (!mileage) {
+      alert('Cadastre um abastecimento para registrar a quilometragem da manutenção.');
+      return;
+    }
+    items[idx].lastServiceKm = mileage;
+  }
+  if (item.intervalMonths > 0) {
+    items[idx].lastServiceDate = new Date().toISOString().slice(0, 10);
+  }
+
   await persistMaintenance(items);
   refreshUI();
 }

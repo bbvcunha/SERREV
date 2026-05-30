@@ -115,7 +115,9 @@ function instalarPlanilha() {
     'id',
     'nome',
     'intervalo_km',
+    'intervalo_meses',
     'ultima_manutencao_km',
+    'ultima_manutencao_data',
   ]);
 
   const cfg = ss.getSheetByName(ABAS.CONFIG);
@@ -220,8 +222,10 @@ function lerAlarmes_() {
     out.push({
       id: String(r[0]),
       label: String(r[1]),
-      intervalKm: Number(r[2]),
-      lastServiceKm: Number(r[3]),
+      intervalKm: Number(r[2]) || 0,
+      intervalMonths: Number(r[3]) || 0,
+      lastServiceKm: Number(r[4]) || 0,
+      lastServiceDate: r[5] ? String(r[5]).slice(0, 10) : '',
     });
   }
   return out;
@@ -229,7 +233,14 @@ function lerAlarmes_() {
 
 function escreverAlarmes_(items) {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ABAS.ALARMS);
-  const header = ['id', 'nome', 'intervalo_km', 'ultima_manutencao_km'];
+  const header = [
+    'id',
+    'nome',
+    'intervalo_km',
+    'intervalo_meses',
+    'ultima_manutencao_km',
+    'ultima_manutencao_data',
+  ];
   sheet.clear();
   sheet.getRange(1, 1, 1, header.length).setValues([header]);
   sheet.setFrozenRows(1);
@@ -237,8 +248,10 @@ function escreverAlarmes_(items) {
   const rows = items.map((a) => [
     a.id,
     a.label,
-    a.intervalKm,
-    a.lastServiceKm,
+    a.intervalKm || 0,
+    a.intervalMonths || 0,
+    a.lastServiceKm || 0,
+    a.lastServiceDate || '',
   ]);
   sheet.getRange(2, 1, rows.length + 1, header.length).setValues(rows);
 }

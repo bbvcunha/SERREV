@@ -648,6 +648,40 @@ td.col-end {
   margin: 0 0 1rem;
 }
 
+.alarm-fieldset {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem 0.25rem;
+  margin-bottom: 0.85rem;
+}
+
+.alarm-fieldset legend {
+  font-size: 0.8rem;
+  color: var(--muted);
+  padding: 0 0.25rem;
+}
+
+.field-hint {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-weight: 400;
+  margin-top: 0.25rem;
+}
+
+label input[type="date"] {
+  display: block;
+  width: 100%;
+  margin-top: 0.35rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 16px;
+  color-scheme: dark;
+}
+
 .kpi-summary {
   display: grid;
   grid-template-columns: repeat(2, 1fr);

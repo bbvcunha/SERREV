@@ -1,5 +1,5 @@
 /**
- * Controle do Carro — backend na planilha Google
+ * SErreV — backend na planilha Google
  * Instalar: ver SETUP-PLANILHA.md
  */
 
@@ -9,6 +9,8 @@ const ABAS = {
   LOGS: 'Manutencoes',
   CONFIG: 'Config',
 };
+
+const API_VERSION = 2;
 
 function doGet(e) {
   return responder(handleRequest(e.parameter || {}));
@@ -39,8 +41,10 @@ function handleRequest(params) {
 
   if (action === 'get') {
     validarSyncId_(syncId, false);
+    garantirAbas_();
     return {
       ok: true,
+      apiVersion: API_VERSION,
       fills: lerAbastecimentos_(),
       maintenance: lerAlarmes_(),
       serviceLogs: lerManutencoes_(),
@@ -51,9 +55,10 @@ function handleRequest(params) {
 
   if (action === 'save') {
     validarSyncId_(syncId, true);
-    const fills = JSON.parse(params.fills || '[]');
-    const maintenance = JSON.parse(params.maintenance || '[]');
-    const serviceLogs = JSON.parse(params.serviceLogs || '[]');
+    const fills = parseJson_(params.fills, 'abastecimentos');
+    const maintenance = parseJson_(params.maintenance, 'alarmes');
+    const serviceLogs = parseJson_(params.serviceLogs, 'manutenções');
+    garantirAbas_();
     escreverAbastecimentos_(fills);
     escreverAlarmes_(maintenance);
     escreverManutencoes_(serviceLogs);
@@ -61,12 +66,29 @@ function handleRequest(params) {
     definirConfig_('updatedAt', new Date().toISOString());
     return {
       ok: true,
+      apiVersion: API_VERSION,
+      saved: {
+        fills: fills.length,
+        maintenance: maintenance.length,
+        serviceLogs: serviceLogs.length,
+      },
       updatedAt: new Date().toISOString(),
       spreadsheetUrl: SpreadsheetApp.getActiveSpreadsheet().getUrl(),
     };
   }
 
   throw new Error('Ação inválida: ' + action);
+}
+
+function parseJson_(raw, label) {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) throw new Error('não é uma lista');
+    return parsed;
+  } catch (err) {
+    throw new Error('Dados de ' + label + ' inválidos: ' + err.message);
+  }
 }
 
 function validarSegredo_(enviado) {
@@ -98,6 +120,23 @@ function validarSyncId_(syncId, aoSalvar) {
   }
 }
 
+/**
+ * Cria abas faltantes e migra Alarmes do formato antigo (4 colunas).
+ * Execute uma vez se a planilha foi criada antes da aba Manutenções.
+ */
+function atualizarPlanilha() {
+  instalarPlanilha();
+  migrarAlarmesSeNecessario_();
+  try {
+    SpreadsheetApp.getUi().alert(
+      'Planilha atualizada!\n\nAbas: Abastecimentos, Alarmes, Manutencoes, Config.\n\n' +
+        'Próximo passo: Implantar → Gerenciar implantações → Nova versão do aplicativo da web.'
+    );
+  } catch (e) {
+    Logger.log('Atualização concluída (sem popup de UI).');
+  }
+}
+
 function instalarPlanilha() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   if (!ss) {
@@ -123,7 +162,6 @@ function instalarPlanilha() {
     'ultima_manutencao_km',
     'ultima_manutencao_data',
   ]);
-
   criarAbaSeNaoExiste_(ABAS.LOGS, [
     'id',
     'data',
@@ -138,14 +176,51 @@ function instalarPlanilha() {
   cfg.getRange('A2').setValue('syncId');
   cfg.getRange('A3').setValue('updatedAt');
 
-  Logger.log('OK: abas Abastecimentos, Alarmes e Config criadas.');
-  try {
-    SpreadsheetApp.getUi().alert(
-      'Planilha pronta!\n\nPróximo: API_SECRET → Implantar aplicativo da web.'
-    );
-  } catch (e) {
-    Logger.log('Instalação concluída (sem popup de UI).');
+  migrarAlarmesSeNecessario_();
+
+  Logger.log('OK: abas Abastecimentos, Alarmes, Manutencoes e Config criadas.');
+}
+
+function garantirAbas_() {
+  instalarPlanilha();
+}
+
+function migrarAlarmesSeNecessario_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(ABAS.ALARMS);
+  if (!sheet || sheet.getLastRow() < 1) return;
+
+  const rows = sheet.getDataRange().getValues();
+  const header = rows[0].map(String);
+  if (header.indexOf('intervalo_meses') !== -1) return;
+
+  const novoHeader = [
+    'id',
+    'nome',
+    'intervalo_km',
+    'intervalo_meses',
+    'ultima_manutencao_km',
+    'ultima_manutencao_data',
+  ];
+  const novasLinhas = [novoHeader];
+
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i];
+    if (!r[0]) continue;
+    novasLinhas.push([
+      r[0],
+      r[1],
+      r[2] || 0,
+      0,
+      r[3] || 0,
+      '',
+    ]);
   }
+
+  sheet.clear();
+  sheet.getRange(1, 1, novasLinhas.length, novoHeader.length).setValues(novasLinhas);
+  sheet.setFrozenRows(1);
+  Logger.log('Alarmes migrados para o formato com intervalo_meses e ultima_manutencao_data.');
 }
 
 function criarAbaSeNaoExiste_(nome, cabecalho) {
@@ -157,6 +232,10 @@ function criarAbaSeNaoExiste_(nome, cabecalho) {
   sheet.getRange(1, 1, 1, cabecalho.length).setValues([cabecalho]);
   sheet.setFrozenRows(1);
   return sheet;
+}
+
+function obterAba_(nome, cabecalho) {
+  return criarAbaSeNaoExiste_(nome, cabecalho);
 }
 
 function lerConfig_(chave) {
@@ -183,6 +262,7 @@ function definirConfig_(chave, valor) {
 
 function lerAbastecimentos_() {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ABAS.FILLS);
+  if (!sheet) return [];
   const rows = sheet.getDataRange().getValues();
   const out = [];
   for (let i = 1; i < rows.length; i++) {
@@ -201,7 +281,6 @@ function lerAbastecimentos_() {
 }
 
 function escreverAbastecimentos_(fills) {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ABAS.FILLS);
   const header = [
     'id',
     'data_hora',
@@ -210,6 +289,7 @@ function escreverAbastecimentos_(fills) {
     'valor_rs',
     'obs',
   ];
+  const sheet = obterAba_(ABAS.FILLS, header);
   sheet.clear();
   sheet.getRange(1, 1, 1, header.length).setValues([header]);
   sheet.setFrozenRows(1);
@@ -227,8 +307,10 @@ function escreverAbastecimentos_(fills) {
 
 function lerAlarmes_() {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ABAS.ALARMS);
+  if (!sheet) return [];
   const rows = sheet.getDataRange().getValues();
-  const header = rows.length ? rows[0].map(String) : [];
+  if (rows.length < 2) return [];
+  const header = rows[0].map(String);
   const formatoNovo = header.indexOf('intervalo_meses') !== -1;
   const out = [];
 
@@ -243,7 +325,7 @@ function lerAlarmes_() {
         intervalKm: Number(r[2]) || 0,
         intervalMonths: Number(r[3]) || 0,
         lastServiceKm: Number(r[4]) || 0,
-        lastServiceDate: r[5] ? String(r[5]).slice(0, 10) : '',
+        lastServiceDate: formatarData_(r[5]),
       });
     } else {
       out.push({
@@ -260,7 +342,6 @@ function lerAlarmes_() {
 }
 
 function escreverAlarmes_(items) {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ABAS.ALARMS);
   const header = [
     'id',
     'nome',
@@ -269,6 +350,7 @@ function escreverAlarmes_(items) {
     'ultima_manutencao_km',
     'ultima_manutencao_data',
   ];
+  const sheet = obterAba_(ABAS.ALARMS, header);
   sheet.clear();
   sheet.getRange(1, 1, 1, header.length).setValues([header]);
   sheet.setFrozenRows(1);
@@ -279,7 +361,7 @@ function escreverAlarmes_(items) {
     a.intervalKm || 0,
     a.intervalMonths || 0,
     a.lastServiceKm || 0,
-    a.lastServiceDate || '',
+    formatarData_(a.lastServiceDate),
   ]);
   sheet.getRange(2, 1, rows.length + 1, header.length).setValues(rows);
 }
@@ -295,7 +377,7 @@ function lerManutencoes_() {
     const realizada = r[5];
     out.push({
       id: String(r[0]),
-      date: r[1] ? String(r[1]).slice(0, 10) : '',
+      date: formatarData_(r[1]),
       location: String(r[2] || ''),
       mileage: Number(r[3]) || 0,
       notes: String(r[4] || ''),
@@ -306,31 +388,27 @@ function lerManutencoes_() {
 }
 
 function escreverManutencoes_(items) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName(ABAS.LOGS);
-  if (!sheet) {
-    criarAbaSeNaoExiste_(ABAS.LOGS, [
-      'id',
-      'data',
-      'local',
-      'km',
-      'comentarios',
-      'realizada',
-    ]);
-    sheet = ss.getSheetByName(ABAS.LOGS);
-  }
   const header = ['id', 'data', 'local', 'km', 'comentarios', 'realizada'];
+  const sheet = obterAba_(ABAS.LOGS, header);
   sheet.clear();
   sheet.getRange(1, 1, 1, header.length).setValues([header]);
   sheet.setFrozenRows(1);
   if (!items.length) return;
   const rows = items.map((m) => [
     m.id,
-    m.date || '',
+    formatarData_(m.date),
     m.location || '',
     m.mileage || 0,
     m.notes || '',
     m.done ? 'sim' : 'nao',
   ]);
   sheet.getRange(2, 1, rows.length + 1, header.length).setValues(rows);
+}
+
+function formatarData_(valor) {
+  if (!valor) return '';
+  if (valor instanceof Date) {
+    return Utilities.formatDate(valor, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  }
+  return String(valor).slice(0, 10);
 }

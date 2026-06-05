@@ -175,6 +175,11 @@ const DataStore = {
     this.notify();
   },
 
+  hasLocalOnly(local, remote) {
+    const remoteIds = new Set(remote.map((item) => item.id));
+    return local.some((item) => !remoteIds.has(item.id));
+  },
+
   applyRemoteData(data) {
     const remoteFills = data.fills || [];
     const remoteMaint = data.maintenance || [];
@@ -184,28 +189,38 @@ const DataStore = {
     const remoteHasData =
       remoteFills.length > 0 || remoteMaint.length > 0 || remoteLogs.length > 0;
 
+    if (data.spreadsheetUrl) this.spreadsheetUrl = data.spreadsheetUrl;
+    if (data.updatedAt) this.lastSyncedAt = new Date(data.updatedAt);
+
     if (!localHasData && remoteHasData) {
       this.fills = remoteFills;
       this.maintenance = remoteMaint;
       this.serviceLogs = remoteLogs;
-    } else if (localHasData && !remoteHasData) {
-      return 'push';
-    } else if (localHasData && remoteHasData) {
-      const merged = !localStorage.getItem(STORAGE_LEGACY_MIGRATED);
-      if (merged) {
-        this.fills = this.mergeById(this.fills, remoteFills);
-        this.maintenance = this.mergeById(this.maintenance, remoteMaint);
-        this.serviceLogs = this.mergeById(this.serviceLogs, remoteLogs);
-        localStorage.setItem(STORAGE_LEGACY_MIGRATED, '1');
-        return 'push';
-      }
-      this.fills = remoteFills;
-      this.maintenance = remoteMaint;
-      this.serviceLogs = remoteLogs;
+      return 'done';
     }
 
-    if (data.spreadsheetUrl) this.spreadsheetUrl = data.spreadsheetUrl;
-    if (data.updatedAt) this.lastSyncedAt = new Date(data.updatedAt);
+    if (localHasData && !remoteHasData) {
+      return 'push';
+    }
+
+    if (localHasData && remoteHasData) {
+      const prevFills = this.fills;
+      const prevMaint = this.maintenance;
+      const prevLogs = this.serviceLogs;
+
+      this.fills = this.mergeById(this.fills, remoteFills);
+      this.maintenance = this.mergeById(this.maintenance, remoteMaint);
+      this.serviceLogs = this.mergeById(this.serviceLogs, remoteLogs);
+
+      if (
+        this.hasLocalOnly(prevFills, remoteFills) ||
+        this.hasLocalOnly(prevMaint, remoteMaint) ||
+        this.hasLocalOnly(prevLogs, remoteLogs)
+      ) {
+        return 'push';
+      }
+    }
+
     return 'done';
   },
 

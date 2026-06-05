@@ -29,7 +29,9 @@ Tempo estimado: **10–15 minutos** (uma vez).
 4. Salve (Ctrl+S)  
 5. No menu do editor: selecione a função **`instalarPlanilha`** → **Executar**  
 6. Autorize o Google (sua conta) quando pedir  
-7. Volte à planilha: devem aparecer as abas **Abastecimentos**, **Alarmes** e **Config**
+7. Volte à planilha: devem aparecer as abas **Abastecimentos**, **Alarmes**, **Manutencoes** e **Config**
+
+> **Planilha antiga?** Execute a função **`atualizarPlanilha`** (em vez de só `instalarPlanilha`) para criar a aba **Manutencoes** e atualizar **Alarmes** com colunas de data.
 
 ---
 
@@ -96,9 +98,11 @@ Em ~1 minuto: https://bbvcunha.github.io/SERREV/
 
 Você pode alterar células manualmente. Na próxima **Sincronizar agora** no app, os dados da planilha prevalecem.
 
-Colunas **Abastecimentos:** `id` | `data_hora` | `km_total` | `litros` | `valor_rs` | `obs`  
+Colunas **Abastecimentos:** `id` | `data_hora` | `km_total` | `litros` | `valor_rs` | `obs`
 
-Colunas **Alarmes:** `id` | `nome` | `intervalo_km` | `ultima_manutencao_km`
+Colunas **Alarmes:** `id` | `nome` | `intervalo_km` | `intervalo_meses` | `ultima_manutencao_km` | `ultima_manutencao_data`
+
+Colunas **Manutencoes:** `id` | `data` | `local` | `km` | `comentarios` | `realizada` (sim/nao)
 
 ---
 

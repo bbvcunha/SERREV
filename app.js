@@ -21,7 +21,12 @@ function getFills() {
 }
 
 function getMaintenance() {
-  return DataStore.maintenance.length ? DataStore.maintenance : structuredClone(DEFAULT_MAINTENANCE);
+  return DataStore.maintenance;
+}
+
+async function persistMaintenance(items) {
+  DataStore.maintenance = items;
+  await DataStore.persist();
 }
 
 function getServiceLogs() {
@@ -350,7 +355,26 @@ function computeAlarmStatus(item, currentKm, refDate = new Date()) {
     daysOver = timeDue ? Math.abs(daysRemaining) : 0;
   }
 
-  const due = (hasKm && currentKm > 0 && kmDue) || (hasTime && a.lastServiceDate && timeDue);
+  const due =
+    (hasKm && currentKm > 0 && kmDue) || (hasTime && a.lastServiceDate && timeDue);
+
+  const remainingCandidates = [];
+  if (hasKm && currentKm > 0 && kmRemaining != null && kmRemaining > 0) {
+    remainingCandidates.push({
+      kind: 'km',
+      ratio: kmRemaining / a.intervalKm,
+      text: `${formatNumber(kmRemaining)} km`,
+    });
+  }
+  if (hasTime && a.lastServiceDate && daysRemaining != null && daysRemaining > 0) {
+    remainingCandidates.push({
+      kind: 'time',
+      ratio: daysRemaining / (a.intervalMonths * 30.44),
+      text: formatTimeRemaining(daysRemaining),
+    });
+  }
+  remainingCandidates.sort((x, y) => x.ratio - y.ratio);
+  const soonest = remainingCandidates[0] || null;
 
   return {
     ...a,
@@ -364,6 +388,8 @@ function computeAlarmStatus(item, currentKm, refDate = new Date()) {
     daysRemaining,
     daysOver,
     needsDate,
+    soonest,
+    remainingCandidates,
   };
 }
 
@@ -376,20 +402,18 @@ function formatAlarmDueReason(status) {
 
 function formatAlarmStatusText(status, mileage) {
   if (status.needsDate) return 'Informe a data da última manutenção (alarme por tempo).';
-  if (!mileage && status.hasKm && !status.hasTime) return 'Aguardando abastecimento para calcular por km.';
+  if (!mileage && status.hasKm && !status.hasTime) {
+    return 'Aguardando abastecimento para calcular por km.';
+  }
   if (status.due) return `Vencido — ${formatAlarmDueReason(status)}`;
-  const parts = [];
-  if (status.hasKm && status.kmRemaining != null && mileage > 0) {
-    parts.push(`${formatNumber(status.kmRemaining)} km`);
-  }
-  if (status.hasTime && status.daysRemaining != null) {
-    parts.push(formatTimeRemaining(status.daysRemaining));
-  }
-  if (!parts.length) {
+  if (!status.soonest) {
     if (status.hasKm && !mileage) return 'Cadastre abastecimento para calcular por km.';
     return 'Configure intervalo por km ou tempo.';
   }
-  return `Faltam ${parts.join(' · ')}`;
+  if (status.remainingCandidates.length > 1) {
+    return `Faltam ${status.soonest.text} (vence primeiro — km ou tempo)`;
+  }
+  return `Faltam ${status.soonest.text}`;
 }
 
 function getDueMaintenance(maintenance, currentKm) {
@@ -1121,10 +1145,15 @@ async function saveAlarmFromForm() {
     items.push({ id: crypto.randomUUID(), ...record });
   }
 
-  await persistMaintenance(items);
-  editingAlarmId = null;
-  refreshUI();
-  return true;
+  try {
+    await persistMaintenance(items);
+    editingAlarmId = null;
+    refreshUI();
+    return true;
+  } catch (e) {
+    alert(e.message || 'Erro ao salvar alarme.');
+    return false;
+  }
 }
 
 async function deleteAlarm(id) {
@@ -1420,7 +1449,8 @@ async function bootstrap() {
     alert('Erro ao conectar à planilha. Os dados continuam salvos neste aparelho.');
   }
 
-  if (!DataStore.maintenance.length) {
+  const hasSavedMaintenance = localStorage.getItem('carKpi_maintenance') !== null;
+  if (!DataStore.maintenance.length && !hasSavedMaintenance) {
     DataStore.maintenance = structuredClone(DEFAULT_MAINTENANCE);
     try {
       await DataStore.persist();

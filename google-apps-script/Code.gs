@@ -218,7 +218,7 @@ function migrarAlarmesSeNecessario_() {
   }
 
   sheet.clear();
-  sheet.getRange(1, 1, novasLinhas.length, novoHeader.length).setValues(novasLinhas);
+  escreverLinhas_(sheet, 1, novasLinhas, novoHeader.length);
   sheet.setFrozenRows(1);
   Logger.log('Alarmes migrados para o formato com intervalo_meses e ultima_manutencao_data.');
 }
@@ -302,7 +302,7 @@ function escreverAbastecimentos_(fills) {
     f.amount,
     f.obs || '',
   ]);
-  sheet.getRange(2, 1, rows.length + 1, header.length).setValues(rows);
+  escreverLinhas_(sheet, 2, rows, header.length);
 }
 
 function lerAlarmes_() {
@@ -363,7 +363,7 @@ function escreverAlarmes_(items) {
     a.lastServiceKm || 0,
     formatarData_(a.lastServiceDate),
   ]);
-  sheet.getRange(2, 1, rows.length + 1, header.length).setValues(rows);
+  escreverLinhas_(sheet, 2, rows, header.length);
 }
 
 function lerManutencoes_() {
@@ -402,7 +402,13 @@ function escreverManutencoes_(items) {
     m.notes || '',
     m.done ? 'sim' : 'nao',
   ]);
-  sheet.getRange(2, 1, rows.length + 1, header.length).setValues(rows);
+  escreverLinhas_(sheet, 2, rows, header.length);
+}
+
+/** getRange(linha, col, numLinhas, numCols) — 3º argumento é quantidade, não índice final. */
+function escreverLinhas_(sheet, startRow, rows, numCols) {
+  if (!rows.length) return;
+  sheet.getRange(startRow, 1, rows.length, numCols).setValues(rows);
 }
 
 function formatarData_(valor) {

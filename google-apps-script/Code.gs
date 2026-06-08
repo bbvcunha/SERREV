@@ -127,6 +127,7 @@ function validarSyncId_(syncId, aoSalvar) {
 function atualizarPlanilha() {
   instalarPlanilha();
   migrarAlarmesSeNecessario_();
+  migrarAlarmesObservacoes_();
   try {
     SpreadsheetApp.getUi().alert(
       'Planilha atualizada!\n\nAbas: Abastecimentos, Alarmes, Manutencoes, Config.\n\n' +
@@ -154,14 +155,7 @@ function instalarPlanilha() {
     'valor_rs',
     'obs',
   ]);
-  criarAbaSeNaoExiste_(ABAS.ALARMS, [
-    'id',
-    'nome',
-    'intervalo_km',
-    'intervalo_meses',
-    'ultima_manutencao_km',
-    'ultima_manutencao_data',
-  ]);
+  criarAbaSeNaoExiste_(ABAS.ALARMS, CABECALHO_ALARMS_());
   criarAbaSeNaoExiste_(ABAS.LOGS, [
     'id',
     'data',
@@ -177,8 +171,21 @@ function instalarPlanilha() {
   cfg.getRange('A3').setValue('updatedAt');
 
   migrarAlarmesSeNecessario_();
+  migrarAlarmesObservacoes_();
 
   Logger.log('OK: abas Abastecimentos, Alarmes, Manutencoes e Config criadas.');
+}
+
+function CABECALHO_ALARMS_() {
+  return [
+    'id',
+    'nome',
+    'intervalo_km',
+    'intervalo_meses',
+    'ultima_manutencao_km',
+    'ultima_manutencao_data',
+    'observacoes',
+  ];
 }
 
 function garantirAbas_() {
@@ -194,14 +201,7 @@ function migrarAlarmesSeNecessario_() {
   const header = rows[0].map(String);
   if (header.indexOf('intervalo_meses') !== -1) return;
 
-  const novoHeader = [
-    'id',
-    'nome',
-    'intervalo_km',
-    'intervalo_meses',
-    'ultima_manutencao_km',
-    'ultima_manutencao_data',
-  ];
+  const novoHeader = CABECALHO_ALARMS_();
   const novasLinhas = [novoHeader];
 
   for (let i = 1; i < rows.length; i++) {
@@ -214,6 +214,7 @@ function migrarAlarmesSeNecessario_() {
       0,
       r[3] || 0,
       '',
+      '',
     ]);
   }
 
@@ -221,6 +222,39 @@ function migrarAlarmesSeNecessario_() {
   escreverLinhas_(sheet, 1, novasLinhas, novoHeader.length);
   sheet.setFrozenRows(1);
   Logger.log('Alarmes migrados para o formato com intervalo_meses e ultima_manutencao_data.');
+}
+
+function migrarAlarmesObservacoes_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(ABAS.ALARMS);
+  if (!sheet || sheet.getLastRow() < 1) return;
+
+  const rows = sheet.getDataRange().getValues();
+  const header = rows[0].map(String);
+  if (header.indexOf('observacoes') !== -1) return;
+  if (header.indexOf('intervalo_meses') === -1) return;
+
+  const novoHeader = CABECALHO_ALARMS_();
+  const novasLinhas = [novoHeader];
+
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i];
+    if (!r[0]) continue;
+    novasLinhas.push([
+      r[0],
+      r[1],
+      r[2] || 0,
+      r[3] || 0,
+      r[4] || 0,
+      r[5] || '',
+      '',
+    ]);
+  }
+
+  sheet.clear();
+  escreverLinhas_(sheet, 1, novasLinhas, novoHeader.length);
+  sheet.setFrozenRows(1);
+  Logger.log('Alarmes migrados: coluna observacoes adicionada.');
 }
 
 function criarAbaSeNaoExiste_(nome, cabecalho) {
@@ -318,6 +352,8 @@ function lerAlarmes_() {
     const r = rows[i];
     if (!r[0]) continue;
 
+    const idxObs = header.indexOf('observacoes');
+
     if (formatoNovo) {
       out.push({
         id: String(r[0]),
@@ -326,6 +362,7 @@ function lerAlarmes_() {
         intervalMonths: Number(r[3]) || 0,
         lastServiceKm: Number(r[4]) || 0,
         lastServiceDate: formatarData_(r[5]),
+        notes: idxObs >= 0 ? String(r[idxObs] || '') : '',
       });
     } else {
       out.push({
@@ -342,14 +379,7 @@ function lerAlarmes_() {
 }
 
 function escreverAlarmes_(items) {
-  const header = [
-    'id',
-    'nome',
-    'intervalo_km',
-    'intervalo_meses',
-    'ultima_manutencao_km',
-    'ultima_manutencao_data',
-  ];
+  const header = CABECALHO_ALARMS_();
   const sheet = obterAba_(ABAS.ALARMS, header);
   sheet.clear();
   sheet.getRange(1, 1, 1, header.length).setValues([header]);
@@ -362,6 +392,7 @@ function escreverAlarmes_(items) {
     a.intervalMonths || 0,
     a.lastServiceKm || 0,
     formatarData_(a.lastServiceDate),
+    a.notes || '',
   ]);
   escreverLinhas_(sheet, 2, rows, header.length);
 }

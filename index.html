@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="SErreV" />
   <title>SErreV</title>
-  <link rel="stylesheet" href="styles.css?v=12" />
+  <link rel="stylesheet" href="styles.css?v=13" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
@@ -256,6 +256,10 @@
           <span class="field-hint">Obrigatória se houver intervalo por tempo</span>
         </label>
       </fieldset>
+      <label>
+        Observações
+        <textarea id="alarm-notes" rows="3" maxlength="500" placeholder="ex.: Óleo 5W30 sintético, filtro Mann, oficina X…"></textarea>
+      </label>
       <div class="dialog-actions">
         <button type="button" class="btn secondary" id="alarm-cancel">Cancelar</button>
         <button type="submit" class="btn primary">Salvar alarme</button>
@@ -294,8 +298,8 @@
     </form>
   </dialog>
 
-  <script src="sheets-config.js?v=12"></script>
-  <script src="sync.js?v=12"></script>
-  <script src="app.js?v=12"></script>
+  <script src="sheets-config.js?v=13"></script>
+  <script src="sync.js?v=13"></script>
+  <script src="app.js?v=13"></script>
 </body>
 </html>

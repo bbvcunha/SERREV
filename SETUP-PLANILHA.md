@@ -100,7 +100,7 @@ Você pode alterar células manualmente. Na próxima **Sincronizar agora** no ap
 
 Colunas **Abastecimentos:** `id` | `data_hora` | `km_total` | `litros` | `valor_rs` | `obs`
 
-Colunas **Alarmes:** `id` | `nome` | `intervalo_km` | `intervalo_meses` | `ultima_manutencao_km` | `ultima_manutencao_data`
+Colunas **Alarmes:** `id` | `nome` | `intervalo_km` | `intervalo_meses` | `ultima_manutencao_km` | `ultima_manutencao_data` | `observacoes`
 
 Colunas **Manutencoes:** `id` | `data` | `local` | `km` | `comentarios` | `realizada` (sim/nao)
 

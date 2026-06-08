@@ -700,12 +700,20 @@ td.col-end {
   font-weight: 600;
 }
 
-.service-notes {
+.service-notes,
+.alarm-notes {
   margin: 0 0 0.65rem;
   font-size: 0.85rem;
   color: var(--text);
   line-height: 1.45;
   white-space: pre-wrap;
+}
+
+.alarm-notes {
+  padding: 0.5rem 0.65rem;
+  background: var(--surface2);
+  border-radius: 6px;
+  border-left: 2px solid var(--border);
 }
 
 .toggle-row {

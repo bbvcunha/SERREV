@@ -265,6 +265,7 @@ function normalizeAlarm(item) {
     intervalMonths: Number(item.intervalMonths) || 0,
     lastServiceKm: Number(item.lastServiceKm) || 0,
     lastServiceDate: item.lastServiceDate || '',
+    notes: item.notes || '',
   };
 }
 
@@ -526,6 +527,9 @@ function renderAlarmsScreen() {
       const statusText = formatAlarmStatusText(status, mileage);
       const canMarkDone =
         (status.hasKm && mileage > 0) || status.hasTime || (!status.hasKm && !status.hasTime);
+      const notes = item.notes?.trim()
+        ? `<p class="alarm-notes">${escapeHtml(item.notes.trim())}</p>`
+        : '';
 
       return `
         <article class="card alarm-card ${status.due ? 'alarm-due' : ''}" data-alarm-id="${item.id}">
@@ -540,6 +544,7 @@ function renderAlarmsScreen() {
             <div><dt>Intervalo</dt><dd>${formatAlarmInterval(item)}</dd></div>
             <div><dt>Última manutenção</dt><dd>${formatLastServiceDisplay(item)}</dd></div>
           </dl>
+          ${notes}
           <p class="maint-status ${statusClass}">${statusText}</p>
           <button type="button" class="btn secondary btn-sm btn-mark-done" data-mark-done="${item.id}" ${!canMarkDone ? 'disabled' : ''}>
             Marcar como feito agora
@@ -1075,6 +1080,7 @@ function openAlarmDialog(id = null) {
   const intervalMonthsInput = document.getElementById('alarm-interval-months');
   const lastKmInput = document.getElementById('alarm-last-service-km');
   const lastDateInput = document.getElementById('alarm-last-service-date');
+  const notesInput = document.getElementById('alarm-notes');
 
   if (id) {
     const item = normalizeAlarm(getMaintenance().find((a) => a.id === id));
@@ -1085,6 +1091,7 @@ function openAlarmDialog(id = null) {
     intervalMonthsInput.value = item.intervalMonths || '';
     lastKmInput.value = item.lastServiceKm;
     lastDateInput.value = item.lastServiceDate || '';
+    notesInput.value = item.notes || '';
   } else {
     title.textContent = 'Novo alarme';
     labelInput.value = '';
@@ -1092,6 +1099,7 @@ function openAlarmDialog(id = null) {
     intervalMonthsInput.value = '';
     lastKmInput.value = '0';
     lastDateInput.value = '';
+    notesInput.value = '';
   }
 
   document.getElementById('alarm-dialog').showModal();
@@ -1104,6 +1112,7 @@ async function saveAlarmFromForm() {
   const intervalMonths = parseInt(document.getElementById('alarm-interval-months').value, 10) || 0;
   const lastServiceKm = parseFloat(document.getElementById('alarm-last-service-km').value);
   const lastServiceDate = document.getElementById('alarm-last-service-date').value;
+  const notes = document.getElementById('alarm-notes').value.trim();
 
   if (!label) { alert('Informe o nome do alarme.'); return false; }
   if (intervalKm <= 0 && intervalMonths <= 0) {
@@ -1133,6 +1142,7 @@ async function saveAlarmFromForm() {
     intervalMonths,
     lastServiceKm,
     lastServiceDate: intervalMonths > 0 ? lastServiceDate : '',
+    notes,
   };
 
   const items = [...getMaintenance()];

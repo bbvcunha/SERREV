@@ -890,7 +890,7 @@ label input[type="date"] {
 
 @media (min-width: 900px) {
   .kpi-summary {
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(4, 1fr);
   }
 }
 
@@ -926,17 +926,12 @@ label input[type="date"] {
 
 .charts-grid {
   display: grid;
+  grid-template-columns: 1fr;
   gap: 1rem;
 }
 
-@media (min-width: 700px) {
-  .charts-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .chart-card-wide {
-    grid-column: 1 / -1;
-  }
+.chart-card-wide {
+  grid-column: 1 / -1;
 }
 
 .chart-desc {
@@ -957,7 +952,26 @@ label input[type="date"] {
 }
 
 .chart-card canvas {
-  max-height: 220px;
+  width: 100% !important;
+  max-height: 240px;
+}
+
+@media (min-width: 600px) {
+  .chart-card canvas {
+    max-height: 320px;
+  }
+}
+
+@media (min-width: 900px) {
+  .chart-card canvas {
+    max-height: 400px;
+  }
+}
+
+@media (orientation: landscape) and (min-height: 320px) {
+  .chart-card canvas {
+    max-height: min(52vh, 440px);
+  }
 }
 
 #obs-dialog {

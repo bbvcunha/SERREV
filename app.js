@@ -115,12 +115,11 @@ function monthKeysBetween(fromKey, toKey) {
   return keys;
 }
 
-// Rateia os km do intervalo entre abastecimentos proporcionalmente aos dias de cada mês.
-function allocateDistanceKmToMonths(prevDatetime, fillDatetime, distanceKm) {
+// Rateia um valor do intervalo entre abastecimentos proporcionalmente aos dias de cada mês.
+function allocatePeriodShareToMonths(prevDatetime, fillDatetime) {
   const start = new Date(prevDatetime);
   const end = new Date(fillDatetime);
-  if (distanceKm <= 0) return [];
-  if (end <= start) return [{ key: monthKeyFromDate(end), km: distanceKm }];
+  if (end <= start) return [{ key: monthKeyFromDate(end), share: 1 }];
 
   const totalMs = end - start;
   const allocations = [];
@@ -134,7 +133,7 @@ function allocateDistanceKmToMonths(prevDatetime, fillDatetime, distanceKm) {
     const segmentMs = segmentEnd - segmentStart;
     allocations.push({
       key: `${year}-${String(month + 1).padStart(2, '0')}`,
-      km: distanceKm * (segmentMs / totalMs),
+      share: segmentMs / totalMs,
     });
     segmentStart = segmentEnd;
   }
@@ -142,25 +141,32 @@ function allocateDistanceKmToMonths(prevDatetime, fillDatetime, distanceKm) {
   return allocations;
 }
 
-function buildMonthlyKmTotals(enriched) {
-  const totals = new Map();
+function buildMonthlyStats(enriched) {
+  const kmTotals = new Map();
+  const litersTotals = new Map();
 
   enriched.forEach((fill, index) => {
-    if (index === 0 || fill.distanceKm == null || fill.distanceKm <= 0) return;
+    if (index === 0 || fill.distanceKm == null || fill.distanceKm <= 0 || fill.liters <= 0) return;
     const prev = enriched[index - 1];
-    for (const { key, km } of allocateDistanceKmToMonths(prev.datetime, fill.datetime, fill.distanceKm)) {
-      totals.set(key, (totals.get(key) || 0) + km);
+    for (const { key, share } of allocatePeriodShareToMonths(prev.datetime, fill.datetime)) {
+      kmTotals.set(key, (kmTotals.get(key) || 0) + fill.distanceKm * share);
+      litersTotals.set(key, (litersTotals.get(key) || 0) + fill.liters * share);
     }
   });
 
-  if (totals.size === 0) return { labels: [], values: [] };
+  if (kmTotals.size === 0) return { labels: [], kmValues: [], consumptionValues: [] };
 
-  const sortedKeys = [...totals.keys()].sort();
+  const sortedKeys = [...kmTotals.keys()].sort();
   const monthKeys = monthKeysBetween(sortedKeys[0], sortedKeys.at(-1));
 
   return {
     labels: monthKeys.map(formatMonthKey),
-    values: monthKeys.map((key) => Math.round(totals.get(key) || 0)),
+    kmValues: monthKeys.map((key) => Math.round(kmTotals.get(key) || 0)),
+    consumptionValues: monthKeys.map((key) => {
+      const liters = litersTotals.get(key) || 0;
+      const km = kmTotals.get(key) || 0;
+      return liters > 0 ? Math.round((km / liters) * 100) / 100 : null;
+    }),
   };
 }
 
@@ -242,17 +248,21 @@ function renderKpiSummary(summary) {
       <strong class="kpi-value">${summary.avgPricePerLiter != null ? 'R$ ' + formatNumber(summary.avgPricePerLiter, 3) + '/L' : '—'}</strong>
     </div>
     <div class="kpi-card">
-      <span class="kpi-label">Intervalo médio (dias)</span>
-      <strong class="kpi-value">${summary.avgDaysBetween != null ? formatNumber(summary.avgDaysBetween, 1) + ' dias' : '—'}</strong>
+      <span class="kpi-label">Intervalo médio (Dias - km)</span>
+      <strong class="kpi-value">${
+        summary.avgDaysBetween != null && summary.avgKmBetween != null
+          ? `${formatNumber(summary.avgDaysBetween, 1)} dias - ${formatNumber(summary.avgKmBetween)} km`
+          : summary.avgDaysBetween != null
+            ? `${formatNumber(summary.avgDaysBetween, 1)} dias`
+            : summary.avgKmBetween != null
+              ? `${formatNumber(summary.avgKmBetween)} km`
+              : '—'
+      }</strong>
       ${
         summary.daysSinceLast != null
           ? `<span class="kpi-sub">há ${formatNumber(summary.daysSinceLast, 0)} dia(s) desde o último</span>`
           : ''
       }
-    </div>
-    <div class="kpi-card">
-      <span class="kpi-label">Intervalo médio (km)</span>
-      <strong class="kpi-value">${summary.avgKmBetween != null ? formatNumber(summary.avgKmBetween) + ' km' : '—'}</strong>
     </div>`;
 }
 
@@ -967,31 +977,56 @@ function renderCharts() {
     },
   });
 
-  const monthlyKm = buildMonthlyKmTotals(enriched);
+  const monthlyStats = buildMonthlyStats(enriched);
 
   chartInstances.distance = new Chart(document.getElementById('chart-distance'), {
     type: 'bar',
     data: {
-      labels: monthlyKm.labels,
-      datasets: [{
-        label: 'Km no mês',
-        data: monthlyKm.values,
-        backgroundColor: 'rgba(61,214,140,0.65)',
-        borderColor: '#3dd68c',
-        borderWidth: 1,
-      }],
+      labels: monthlyStats.labels,
+      datasets: [
+        {
+          label: 'Km no mês',
+          data: monthlyStats.kmValues,
+          backgroundColor: 'rgba(61,214,140,0.65)',
+          borderColor: '#3dd68c',
+          borderWidth: 1,
+          yAxisID: 'y',
+        },
+        {
+          label: 'Consumo médio (km/L)',
+          data: monthlyStats.consumptionValues,
+          backgroundColor: 'rgba(179, 136, 255, 0.75)',
+          borderColor: '#b388ff',
+          borderWidth: 1,
+          yAxisID: 'y1',
+        },
+      ],
     },
     options: {
       ...baseOptions,
       plugins: {
-        legend: { display: false },
+        legend: { display: true, labels: { color: '#8b9cb3', boxWidth: 12 } },
         tooltip: {
           callbacks: {
-            label: (ctx) => `${formatNumber(ctx.parsed.y)} km`,
+            label: (ctx) => {
+              const value = ctx.parsed.y;
+              if (value == null) return '';
+              return ctx.datasetIndex === 0
+                ? `${formatNumber(value)} km`
+                : `${formatNumber(value, 2)} km/L`;
+            },
           },
         },
       },
-      scales: { x: categoryAxis('Mês'), y: yAxis('km') },
+      scales: {
+        x: categoryAxis('Mês'),
+        y: { ...yAxis('km'), position: 'left' },
+        y1: {
+          ...yAxis('km/L'),
+          position: 'right',
+          grid: { drawOnChartArea: false },
+        },
+      },
     },
   });
 

@@ -7,8 +7,9 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="SErreV" />
   <title>SErreV</title>
-  <link rel="stylesheet" href="styles.css?v=13" />
+  <link rel="stylesheet" href="styles.css?v=15" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 </head>
 <body>
   <header class="app-header">
@@ -89,24 +90,24 @@
           <canvas id="chart-cost-km"></canvas>
         </div>
         <div class="card chart-card" id="chart-card-price-liter">
-          <h3>Preço da gasolina (R$/L)</h3>
+          <h3>3. Preço da gasolina (R$/L)</h3>
           <p class="chart-desc">Custo por litro em cada abastecimento · linha tracejada = preço médio</p>
           <canvas id="chart-price-liter"></canvas>
         </div>
         <div class="card chart-card charts-period" id="chart-card-distance">
-          <h3>3. Distância por período (km)</h3>
-          <p class="chart-desc">Km entre dois abastecimentos</p>
+          <h3>4. Km rodados por mês</h3>
+          <p class="chart-desc">Soma de km rodados em cada mês calendário</p>
           <canvas id="chart-distance"></canvas>
         </div>
-        <div class="card chart-card charts-period">
-          <h3>4. Gasto total acumulado (R$)</h3>
-          <p class="chart-desc">Soma dos abastecimentos ao longo do tempo</p>
+        <div class="card chart-card chart-card-wide charts-period">
+          <h3>5. Gasto total acumulado (R$)</h3>
+          <p class="chart-desc">Gasto acumulado (esq.) e km acumulado (dir.) ao longo do tempo</p>
           <canvas id="chart-spent"></canvas>
         </div>
-        <div class="card chart-card chart-card-wide charts-period">
-          <h3>5. Intervalo entre abastecimentos</h3>
-          <p class="chart-desc">Dias e quilometragem desde o abastecimento anterior</p>
-          <canvas id="chart-interval"></canvas>
+        <div class="card chart-card charts-period">
+          <h3>6. Consumo × distância por abastecimento</h3>
+          <p class="chart-desc">Por abastecimento: consumo (km/L) e km rodados no período</p>
+          <canvas id="chart-consumption-distance"></canvas>
         </div>
       </div>
       <p id="charts-empty" class="empty-state">Cadastre pelo menos dois abastecimentos para ver os KPIs.</p>
@@ -298,8 +299,8 @@
     </form>
   </dialog>
 
-  <script src="sheets-config.js?v=13"></script>
-  <script src="sync.js?v=13"></script>
-  <script src="app.js?v=13"></script>
+  <script src="sheets-config.js?v=15"></script>
+  <script src="sync.js?v=15"></script>
+  <script src="app.js?v=15"></script>
 </body>
 </html>

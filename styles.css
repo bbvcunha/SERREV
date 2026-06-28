@@ -918,6 +918,12 @@ label input[type="date"] {
   line-height: 1.25;
 }
 
+.kpi-sub {
+  font-size: 0.62rem;
+  color: var(--muted);
+  line-height: 1.2;
+}
+
 .charts-grid {
   display: grid;
   gap: 1rem;

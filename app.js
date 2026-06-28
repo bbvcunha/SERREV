@@ -85,6 +85,98 @@ function enrichFills(fills) {
   });
 }
 
+function monthKeyFromDate(iso) {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function formatMonthKey(key) {
+  const [year, month] = key.split('-').map(Number);
+  return new Date(year, month - 1, 1).toLocaleDateString(LOCALE, {
+    month: 'short',
+    year: '2-digit',
+  });
+}
+
+function monthKeysBetween(fromKey, toKey) {
+  const [fromYear, fromMonth] = fromKey.split('-').map(Number);
+  const [toYear, toMonth] = toKey.split('-').map(Number);
+  const keys = [];
+  let year = fromYear;
+  let month = fromMonth;
+  while (year < toYear || (year === toYear && month <= toMonth)) {
+    keys.push(`${year}-${String(month).padStart(2, '0')}`);
+    month += 1;
+    if (month > 12) {
+      month = 1;
+      year += 1;
+    }
+  }
+  return keys;
+}
+
+// Rateia os km do intervalo entre abastecimentos proporcionalmente aos dias de cada mês.
+function allocateDistanceKmToMonths(prevDatetime, fillDatetime, distanceKm) {
+  const start = new Date(prevDatetime);
+  const end = new Date(fillDatetime);
+  if (distanceKm <= 0) return [];
+  if (end <= start) return [{ key: monthKeyFromDate(end), km: distanceKm }];
+
+  const totalMs = end - start;
+  const allocations = [];
+  let segmentStart = start;
+
+  while (segmentStart < end) {
+    const year = segmentStart.getFullYear();
+    const month = segmentStart.getMonth();
+    const nextMonth = new Date(year, month + 1, 1);
+    const segmentEnd = nextMonth < end ? nextMonth : end;
+    const segmentMs = segmentEnd - segmentStart;
+    allocations.push({
+      key: `${year}-${String(month + 1).padStart(2, '0')}`,
+      km: distanceKm * (segmentMs / totalMs),
+    });
+    segmentStart = segmentEnd;
+  }
+
+  return allocations;
+}
+
+function buildMonthlyKmTotals(enriched) {
+  const totals = new Map();
+
+  enriched.forEach((fill, index) => {
+    if (index === 0 || fill.distanceKm == null || fill.distanceKm <= 0) return;
+    const prev = enriched[index - 1];
+    for (const { key, km } of allocateDistanceKmToMonths(prev.datetime, fill.datetime, fill.distanceKm)) {
+      totals.set(key, (totals.get(key) || 0) + km);
+    }
+  });
+
+  if (totals.size === 0) return { labels: [], values: [] };
+
+  const sortedKeys = [...totals.keys()].sort();
+  const monthKeys = monthKeysBetween(sortedKeys[0], sortedKeys.at(-1));
+
+  return {
+    labels: monthKeys.map(formatMonthKey),
+    values: monthKeys.map((key) => Math.round(totals.get(key) || 0)),
+  };
+}
+
+function computeAlignedAxisLimit(maxValue) {
+  if (maxValue <= 0) return { min: 0, max: 1000, stepSize: 250 };
+  const padded = maxValue * 1.08;
+  const exp = 10 ** Math.floor(Math.log10(padded));
+  const fraction = padded / exp;
+  let niceMax;
+  if (fraction <= 1) niceMax = exp;
+  else if (fraction <= 2) niceMax = 2 * exp;
+  else if (fraction <= 5) niceMax = 5 * exp;
+  else niceMax = 10 * exp;
+  return { min: 0, max: niceMax, stepSize: niceMax / 4 };
+}
+
 function computeKpiSummary(enriched) {
   const periods = enriched.filter((r) => r.distanceKm != null && r.distanceKm > 0);
   const intervals = enriched.filter((r) => r.daysSincePrev != null && r.daysSincePrev >= 0);
@@ -111,6 +203,11 @@ function computeKpiSummary(enriched) {
       : null;
   const costPerLiter = totalLitersAll > 0 ? totalSpentAll / totalLitersAll : null;
 
+  const lastFill = enriched.length ? enriched[enriched.length - 1] : null;
+  const daysSinceLast = lastFill
+    ? (Date.now() - new Date(lastFill.datetime)) / (1000 * 60 * 60 * 24)
+    : null;
+
   return {
     avgConsumption,
     avgCostPerKm,
@@ -118,6 +215,7 @@ function computeKpiSummary(enriched) {
     costPerLiter,
     avgDaysBetween,
     avgKmBetween,
+    daysSinceLast,
     fillCount: enriched.length,
     periodCount: periods.length,
   };
@@ -144,16 +242,17 @@ function renderKpiSummary(summary) {
       <strong class="kpi-value">${summary.avgPricePerLiter != null ? 'R$ ' + formatNumber(summary.avgPricePerLiter, 3) + '/L' : '—'}</strong>
     </div>
     <div class="kpi-card">
-      <span class="kpi-label">Custo / litro</span>
-      <strong class="kpi-value">${summary.costPerLiter != null ? 'R$ ' + formatNumber(summary.costPerLiter, 3) + '/L' : '—'}</strong>
+      <span class="kpi-label">Intervalo médio (dias)</span>
+      <strong class="kpi-value">${summary.avgDaysBetween != null ? formatNumber(summary.avgDaysBetween, 1) + ' dias' : '—'}</strong>
+      ${
+        summary.daysSinceLast != null
+          ? `<span class="kpi-sub">há ${formatNumber(summary.daysSinceLast, 0)} dia(s) desde o último</span>`
+          : ''
+      }
     </div>
     <div class="kpi-card">
-      <span class="kpi-label">Intervalo médio</span>
-      <strong class="kpi-value">${
-        summary.avgDaysBetween != null
-          ? formatNumber(summary.avgDaysBetween, 1) + ' dias · ' + formatNumber(summary.avgKmBetween) + ' km'
-          : '—'
-      }</strong>
+      <span class="kpi-label">Intervalo médio (km)</span>
+      <strong class="kpi-value">${summary.avgKmBetween != null ? formatNumber(summary.avgKmBetween) + ' km' : '—'}</strong>
     </div>`;
 }
 
@@ -729,50 +828,78 @@ function renderCharts() {
   }
   emptyEl.classList.add('hidden');
 
-  const fillLabels = enriched.map((r) => formatDateTime(r.datetime));
-  const chartDefaults = {
+  const ts = (iso) => new Date(iso).getTime();
+  const firstTs = ts(enriched[0].datetime);
+  const lastFillTs = ts(enriched.at(-1).datetime);
+  const nowTs = Date.now();
+
+  // Eixo X temporal: escala de 1 dia (timeline proporcional).
+  const timeAxis = (text, min = firstTs, max = nowTs) => ({
+    type: 'time',
+    min,
+    max,
+    time: {
+      unit: 'day',
+      stepSize: 1,
+      round: 'day',
+      tooltipFormat: 'dd/MM/yyyy HH:mm',
+      displayFormats: { day: 'dd/MM' },
+    },
+    title: text ? { display: true, text, color: '#8b9cb3' } : undefined,
+    ticks: { color: '#8b9cb3', maxRotation: 45, autoSkip: true, font: { size: 10 } },
+    grid: { color: 'rgba(45,58,79,0.5)' },
+  });
+
+  const yAxis = (text) => ({
+    ticks: { color: '#8b9cb3' },
+    grid: { color: 'rgba(45,58,79,0.5)' },
+    title: text ? { display: true, text, color: '#8b9cb3' } : undefined,
+  });
+
+  const categoryAxis = (text) => ({
+    ticks: { color: '#8b9cb3', maxRotation: 45, autoSkip: true, font: { size: 10 } },
+    grid: { color: 'rgba(45,58,79,0.5)' },
+    title: text ? { display: true, text, color: '#8b9cb3' } : undefined,
+  });
+
+  const baseOptions = {
     responsive: true,
     maintainAspectRatio: true,
     plugins: { legend: { display: true, labels: { color: '#8b9cb3', boxWidth: 12 } } },
-    scales: {
-      x: { ticks: { color: '#8b9cb3', maxRotation: 45, font: { size: 10 } }, grid: { color: 'rgba(45,58,79,0.5)' } },
-      y: { ticks: { color: '#8b9cb3' }, grid: { color: 'rgba(45,58,79,0.5)' } },
-    },
   };
+
+  const avgLine = (label, value, minX = firstTs, maxX = nowTs) =>
+    value != null
+      ? [{
+          label,
+          data: [{ x: minX, y: value }, { x: maxX, y: value }],
+          borderColor: '#8b9cb3',
+          borderDash: [6, 4],
+          pointRadius: 0,
+          fill: false,
+        }]
+      : [];
 
   chartInstances.priceLiter = new Chart(document.getElementById('chart-price-liter'), {
     type: 'line',
     data: {
-      labels: fillLabels,
       datasets: [
         {
           label: 'R$/L',
-          data: enriched.map((r) => r.pricePerLiter),
+          data: enriched.map((r) => ({ x: ts(r.datetime), y: r.pricePerLiter })),
           borderColor: '#f5b942',
           backgroundColor: 'rgba(245,185,66,0.15)',
           fill: true,
           tension: 0.2,
           pointRadius: 4,
         },
-        ...(summary.avgPricePerLiter != null
-          ? [{
-              label: 'Preço médio',
-              data: enriched.map(() => summary.avgPricePerLiter),
-              borderColor: '#8b9cb3',
-              borderDash: [6, 4],
-              pointRadius: 0,
-              fill: false,
-            }]
-          : []),
+        ...avgLine('Preço médio', summary.avgPricePerLiter, firstTs, lastFillTs),
       ],
     },
     options: {
-      ...chartDefaults,
-      plugins: { ...chartDefaults.plugins, legend: { display: summary.avgPricePerLiter != null } },
-      scales: {
-        ...chartDefaults.scales,
-        y: { ...chartDefaults.scales.y, title: { display: true, text: 'R$/L', color: '#8b9cb3' } },
-      },
+      ...baseOptions,
+      plugins: { ...baseOptions.plugins, legend: { display: summary.avgPricePerLiter != null } },
+      scales: { x: timeAxis(undefined, firstTs, lastFillTs), y: yAxis('R$/L') },
     },
   });
 
@@ -782,55 +909,51 @@ function renderCharts() {
   }
   document.querySelectorAll('.charts-period').forEach((el) => el.classList.remove('hidden'));
 
-  const periodLabels = periods.map((r) => formatDateTime(r.datetime));
   let cumulativeSpent = 0;
+  let cumulativeKm = 0;
   const spentCumulative = enriched.map((r) => {
     cumulativeSpent += r.amount;
-    return cumulativeSpent;
+    cumulativeKm += r.distanceKm != null && r.distanceKm > 0 ? r.distanceKm : 0;
+    return { x: ts(r.datetime), spent: cumulativeSpent, km: cumulativeKm };
   });
-  const spentLabels = enriched.map((r) => formatDateTime(r.datetime));
-  const intervals = periods.filter((r) => r.daysSincePrev != null);
+  const lastCumulative = spentCumulative.at(-1);
+  if (lastCumulative && lastCumulative.x < nowTs) {
+    spentCumulative.push({ x: nowTs, spent: lastCumulative.spent, km: lastCumulative.km });
+  }
   const avgConsumption = summary.avgConsumption;
+  // Gráficos 1 e 2: do 2º abastecimento (1º período com km) até o último abastecimento.
+  const periodFirstTs = ts(periods[0].datetime);
+  const periodLastTs = ts(periods.at(-1).datetime);
+  const periodTimeAxis = (text) => timeAxis(text, periodFirstTs, periodLastTs);
 
   chartInstances.consumption = new Chart(document.getElementById('chart-consumption'), {
     type: 'line',
     data: {
-      labels: periodLabels,
       datasets: [
         {
           label: 'Consumo (km/L)',
-          data: periods.map((r) => r.consumption),
+          data: periods.map((r) => ({ x: ts(r.datetime), y: r.consumption })),
           borderColor: '#3d9eff',
           backgroundColor: 'rgba(61,158,255,0.15)',
           fill: true,
           tension: 0.2,
         },
-        ...(avgConsumption != null
-          ? [{
-              label: 'Média geral',
-              data: periods.map(() => avgConsumption),
-              borderColor: '#8b9cb3',
-              borderDash: [6, 4],
-              pointRadius: 0,
-              fill: false,
-            }]
-          : []),
+        ...avgLine('Média geral', avgConsumption, periodFirstTs, periodLastTs),
       ],
     },
     options: {
-      ...chartDefaults,
-      plugins: { ...chartDefaults.plugins, legend: { display: avgConsumption != null } },
-      scales: { ...chartDefaults.scales, y: { ...chartDefaults.scales.y, title: { display: true, text: 'km/L', color: '#8b9cb3' } } },
+      ...baseOptions,
+      plugins: { ...baseOptions.plugins, legend: { display: avgConsumption != null } },
+      scales: { x: periodTimeAxis(), y: yAxis('km/L') },
     },
   });
 
   chartInstances.costKm = new Chart(document.getElementById('chart-cost-km'), {
     type: 'line',
     data: {
-      labels: periodLabels,
       datasets: [{
         label: 'R$/km',
-        data: periods.map((r) => r.costPerKm),
+        data: periods.map((r) => ({ x: ts(r.datetime), y: r.costPerKm })),
         borderColor: '#f5b942',
         backgroundColor: 'rgba(245,185,66,0.12)',
         fill: true,
@@ -838,68 +961,128 @@ function renderCharts() {
       }],
     },
     options: {
-      ...chartDefaults,
+      ...baseOptions,
       plugins: { legend: { display: false } },
-      scales: { ...chartDefaults.scales, y: { ...chartDefaults.scales.y, title: { display: true, text: 'R$/km', color: '#8b9cb3' } } },
+      scales: { x: periodTimeAxis(), y: yAxis('R$/km') },
     },
   });
+
+  const monthlyKm = buildMonthlyKmTotals(enriched);
 
   chartInstances.distance = new Chart(document.getElementById('chart-distance'), {
     type: 'bar',
     data: {
-      labels: periodLabels,
+      labels: monthlyKm.labels,
       datasets: [{
-        label: 'Km no período',
-        data: periods.map((r) => r.distanceKm),
-        backgroundColor: 'rgba(61,214,140,0.55)',
+        label: 'Km no mês',
+        data: monthlyKm.values,
+        backgroundColor: 'rgba(61,214,140,0.65)',
         borderColor: '#3dd68c',
         borderWidth: 1,
       }],
     },
     options: {
-      ...chartDefaults,
-      plugins: { legend: { display: false } },
-      scales: { ...chartDefaults.scales, y: { ...chartDefaults.scales.y, title: { display: true, text: 'km', color: '#8b9cb3' } } },
+      ...baseOptions,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => `${formatNumber(ctx.parsed.y)} km`,
+          },
+        },
+      },
+      scales: { x: categoryAxis('Mês'), y: yAxis('km') },
     },
   });
 
   chartInstances.spent = new Chart(document.getElementById('chart-spent'), {
     type: 'line',
     data: {
-      labels: spentLabels,
-      datasets: [{
-        label: 'Gasto acumulado',
-        data: spentCumulative,
-        borderColor: '#f07178',
-        backgroundColor: 'rgba(240,113,120,0.2)',
-        fill: true,
-        tension: 0.2,
-      }],
-    },
-    options: {
-      ...chartDefaults,
-      plugins: { legend: { display: false } },
-      scales: { ...chartDefaults.scales, y: { ...chartDefaults.scales.y, title: { display: true, text: 'R$', color: '#8b9cb3' } } },
-    },
-  });
-
-  chartInstances.interval = new Chart(document.getElementById('chart-interval'), {
-    type: 'bar',
-    data: {
-      labels: intervals.map((r) => formatDateTime(r.datetime)),
       datasets: [
         {
-          label: 'Dias',
-          data: intervals.map((r) => r.daysSincePrev),
-          backgroundColor: 'rgba(61,158,255,0.5)',
+          label: 'Gasto acumulado (R$)',
+          data: spentCumulative.map((r) => ({ x: r.x, y: r.spent })),
+          borderColor: '#f07178',
+          backgroundColor: 'rgba(240,113,120,0.2)',
+          fill: true,
+          tension: 0.2,
+          yAxisID: 'y',
+        },
+        {
+          label: 'Km acumulado',
+          data: spentCumulative.map((r) => ({ x: r.x, y: r.km })),
           borderColor: '#3d9eff',
+          backgroundColor: 'rgba(61,158,255,0.0)',
+          fill: false,
+          tension: 0.2,
+          yAxisID: 'y1',
+        },
+      ],
+    },
+    options: (() => {
+      const spentValues = spentCumulative.map((r) => r.spent);
+      const kmValues = spentCumulative.map((r) => r.km);
+      const axisLimit = computeAlignedAxisLimit(Math.max(...spentValues, ...kmValues, 0));
+      const alignedTicks = {
+        color: '#8b9cb3',
+        stepSize: axisLimit.stepSize,
+        callback: (value) => formatNumber(value, 0),
+      };
+      const alignedScale = {
+        type: 'linear',
+        min: axisLimit.min,
+        max: axisLimit.max,
+        ticks: alignedTicks,
+      };
+
+      return {
+        ...baseOptions,
+        plugins: { legend: { display: true, labels: { color: '#8b9cb3', boxWidth: 12 } } },
+        scales: {
+          x: timeAxis(),
+          y: {
+            ...alignedScale,
+            position: 'left',
+            grid: { color: 'rgba(45,58,79,0.5)' },
+            title: { display: true, text: 'R$', color: '#8b9cb3' },
+          },
+          y1: {
+            ...alignedScale,
+            position: 'right',
+            grid: { drawOnChartArea: false },
+            title: { display: true, text: 'km', color: '#8b9cb3' },
+          },
+        },
+      };
+    })(),
+  });
+
+  const fillPeriods = periods.filter((r) => r.consumption != null);
+  const fillLabels = fillPeriods.map((r) =>
+    new Date(r.datetime).toLocaleDateString(LOCALE, {
+      day: '2-digit',
+      month: '2-digit',
+      year: '2-digit',
+    })
+  );
+
+  chartInstances.consumptionDistance = new Chart(document.getElementById('chart-consumption-distance'), {
+    type: 'bar',
+    data: {
+      labels: fillLabels,
+      datasets: [
+        {
+          label: 'Consumo (km/L)',
+          data: fillPeriods.map((r) => r.consumption),
+          backgroundColor: 'rgba(179, 136, 255, 0.75)',
+          borderColor: '#b388ff',
           borderWidth: 1,
           yAxisID: 'y',
         },
         {
-          label: 'Km',
-          data: intervals.map((r) => r.distanceKm),
-          backgroundColor: 'rgba(61,214,140,0.45)',
+          label: 'Km rodados',
+          data: fillPeriods.map((r) => r.distanceKm),
+          backgroundColor: 'rgba(61, 214, 140, 0.65)',
           borderColor: '#3dd68c',
           borderWidth: 1,
           yAxisID: 'y1',
@@ -907,23 +1090,31 @@ function renderCharts() {
       ],
     },
     options: {
-      responsive: true,
-      maintainAspectRatio: true,
-      plugins: { legend: { labels: { color: '#8b9cb3' } } },
-      scales: {
-        x: { ticks: { color: '#8b9cb3', maxRotation: 45, font: { size: 10 } }, grid: { color: 'rgba(45,58,79,0.5)' } },
-        y: {
-          type: 'linear',
-          position: 'left',
-          title: { display: true, text: 'dias', color: '#8b9cb3' },
-          ticks: { color: '#8b9cb3' },
-          grid: { color: 'rgba(45,58,79,0.5)' },
+      ...baseOptions,
+      plugins: {
+        legend: { display: true, labels: { color: '#8b9cb3', boxWidth: 12 } },
+        tooltip: {
+          callbacks: {
+            title: (items) =>
+              fillPeriods[items[0]?.dataIndex]
+                ? formatDateTime(fillPeriods[items[0].dataIndex].datetime)
+                : '',
+            label: (ctx) => {
+              const value = ctx.parsed.y;
+              if (value == null) return '';
+              return ctx.datasetIndex === 0
+                ? `${formatNumber(value, 2)} km/L`
+                : `${formatNumber(value)} km`;
+            },
+          },
         },
+      },
+      scales: {
+        x: categoryAxis('Abastecimento'),
+        y: { ...yAxis('km/L'), position: 'left' },
         y1: {
-          type: 'linear',
+          ...yAxis('km'),
           position: 'right',
-          title: { display: true, text: 'km', color: '#8b9cb3' },
-          ticks: { color: '#8b9cb3' },
           grid: { drawOnChartArea: false },
         },
       },

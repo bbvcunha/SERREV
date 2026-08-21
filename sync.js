@@ -12,6 +12,7 @@ const DataStore = {
   syncId: null,
   cloudEnabled: false,
   cloudReady: false,
+  cloudError: null,
   cloudProvider: null,
   syncing: false,
   lastSyncedAt: null,
@@ -30,6 +31,7 @@ const DataStore = {
       syncId: this.syncId,
       cloudEnabled: this.cloudEnabled,
       cloudReady: this.cloudReady,
+      cloudError: this.cloudError,
       cloudProvider: this.cloudProvider,
       syncing: this.syncing,
       lastSyncedAt: this.lastSyncedAt,
@@ -139,13 +141,32 @@ const DataStore = {
       });
     }
 
-    const res = await fetch(url, options);
-    const text = await res.text();
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 25000);
+    let res;
+    let text;
+    try {
+      res = await fetch(url, { ...options, signal: controller.signal });
+      text = await res.text();
+    } catch (e) {
+      if (e.name === 'AbortError') {
+        throw new Error('Tempo esgotado ao falar com a planilha. Tente de novo.');
+      }
+      throw e;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+
     let data;
     try {
       data = JSON.parse(text);
     } catch {
-      throw new Error('Resposta inválida da planilha. Verifique a URL do Apps Script.');
+      if (res.status === 404 || /página não encontrada|not found/i.test(text)) {
+        throw new Error(
+          'URL do Apps Script inválida (404). Em Implantar → Gerenciar implantações, copie a URL /exec e atualize sheets-config.js.'
+        );
+      }
+      throw new Error('Resposta inválida da planilha. Verifique a URL do Apps Script e se o acesso é “Qualquer pessoa”.');
     }
     if (!data.ok) throw new Error(data.error || 'Erro na planilha');
     return data;
@@ -154,6 +175,7 @@ const DataStore = {
   async init() {
     this.localLoad();
     this.ensureSyncId();
+    this.cloudError = null;
 
     if (!this.isSheetsConfigured()) {
       this.cloudEnabled = false;
@@ -168,9 +190,11 @@ const DataStore = {
     try {
       await this.pullFromCloud();
       this.cloudReady = true;
+      this.cloudError = null;
     } catch (e) {
       console.error('Sheets init', e);
       this.cloudReady = false;
+      this.cloudError = e.message || String(e);
     }
     this.notify();
   },

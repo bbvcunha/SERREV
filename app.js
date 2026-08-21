@@ -359,7 +359,7 @@ function initDatetimeInput(input) {
 
 function updateSyncStatus() {
   const el = document.getElementById('sync-status');
-  const { cloudEnabled, cloudReady, syncing, lastSyncedAt } = DataStore;
+  const { cloudEnabled, cloudReady, cloudError, syncing, lastSyncedAt } = DataStore;
 
   if (syncing) {
     el.textContent = 'Sincronizando…';
@@ -375,7 +375,7 @@ function updateSyncStatus() {
     return;
   }
   if (cloudEnabled && !cloudReady) {
-    el.textContent = 'Conectando à planilha…';
+    el.textContent = cloudError ? 'Falha ao conectar à planilha' : 'Conectando à planilha…';
     el.className = 'sync-status warn';
     return;
   }
@@ -393,6 +393,8 @@ function updateCloudBanner() {
   if (!DataStore.isSheetsConfigured()) {
     banner.innerHTML =
       '<strong>Planilha não configurada.</strong> Siga <code>SETUP-PLANILHA.md</code> (Google Sheets no seu Drive, ~10 min). Enquanto isso, use <strong>Exportar/Importar backup</strong>.';
+  } else if (DataStore.cloudError) {
+    banner.innerHTML = `<strong>Falha ao conectar.</strong> ${escapeHtml(DataStore.cloudError)}`;
   } else {
     banner.textContent = 'Conectando à planilha… Verifique a URL do script e sua internet.';
   }
@@ -1746,9 +1748,14 @@ document.getElementById('btn-sync-now').addEventListener('click', async () => {
       return;
     }
     await DataStore.pullFromCloud();
+    DataStore.cloudReady = true;
+    DataStore.cloudError = null;
     refreshUI();
     alert('Sincronizado com a planilha!');
   } catch (e) {
+    DataStore.cloudReady = false;
+    DataStore.cloudError = e.message || String(e);
+    refreshUI();
     alert('Falha na sincronização: ' + (e.message || e));
   }
 });

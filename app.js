@@ -1074,42 +1074,26 @@ function renderCharts() {
           backgroundColor: 'rgba(61,214,140,0.65)',
           borderColor: '#3dd68c',
           borderWidth: 1,
-          yAxisID: 'y',
-        },
-        {
-          label: 'Consumo médio (km/L)',
-          data: monthlyStats.consumptionValues,
-          backgroundColor: 'rgba(179, 136, 255, 0.75)',
-          borderColor: '#b388ff',
-          borderWidth: 1,
-          yAxisID: 'y1',
         },
       ],
     },
     options: {
       ...baseOptions,
       plugins: {
-        legend: { display: true, labels: { color: '#8b9cb3', boxWidth: 12 } },
+        legend: { display: false },
         tooltip: {
           callbacks: {
             label: (ctx) => {
               const value = ctx.parsed.y;
               if (value == null) return '';
-              return ctx.datasetIndex === 0
-                ? `${formatNumber(value)} km`
-                : `${formatNumber(value, 2)} km/L`;
+              return `${formatNumber(value)} km`;
             },
           },
         },
       },
       scales: {
         x: categoryAxis('Mês'),
-        y: { ...yAxis('km'), position: 'left' },
-        y1: {
-          ...yAxis('km/L'),
-          position: 'right',
-          grid: { drawOnChartArea: false },
-        },
+        y: yAxis('km'),
       },
     },
   });

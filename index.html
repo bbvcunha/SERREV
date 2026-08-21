@@ -26,7 +26,7 @@
 
   <main>
     <section id="screen-entry" class="screen active">
-      <p class="hint">Registre logo após abastecer o tanque.</p>
+      <p class="hint">Registre após abastecer. Se o tanque não ficou cheio, ajuste o marcador (20 = cheio).</p>
       <form id="entry-form" class="card">
         <label>
           Data e hora
@@ -39,6 +39,11 @@
         <label>
           Litros
           <input type="number" id="field-liters" min="0.01" step="0.01" required placeholder="ex.: 45,2" />
+        </label>
+        <label>
+          Marcador após abastecer
+          <input type="number" id="field-fuel-gauge" min="0" max="20" step="1" value="20" required />
+          <span class="field-hint">0 = vazio · 10 = meio · 20 = cheio</span>
         </label>
         <label>
           Valor total pago (R$)
@@ -61,6 +66,7 @@
               <th>Data / hora</th>
               <th>Km total</th>
               <th>Litros</th>
+              <th>Marcador</th>
               <th>Valor (R$)</th>
               <th>R$/L</th>
               <th>km/L</th>
@@ -215,6 +221,11 @@
       <label>
         Litros
         <input type="number" id="fill-liters" min="0.01" step="0.01" required />
+      </label>
+      <label>
+        Marcador após abastecer
+        <input type="number" id="fill-fuel-gauge" min="0" max="20" step="1" value="20" required />
+        <span class="field-hint">0 = vazio · 10 = meio · 20 = cheio</span>
       </label>
       <label>
         Valor total pago (R$)

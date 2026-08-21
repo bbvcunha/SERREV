@@ -121,21 +121,27 @@ function validarSyncId_(syncId, aoSalvar) {
 }
 
 /**
- * Cria abas faltantes e migra Alarmes do formato antigo (4 colunas).
- * Execute uma vez se a planilha foi criada antes da aba Manutenções.
+ * Cria abas faltantes e migra colunas antigas.
+ * Execute no editor (sem popup) ou pelo menu da planilha.
+ * Não usa alert — no editor o alert bloqueia esperando OK na aba da planilha.
  */
 function atualizarPlanilha() {
   instalarPlanilha();
-  migrarAlarmesSeNecessario_();
-  migrarAlarmesObservacoes_();
-  try {
-    SpreadsheetApp.getUi().alert(
-      'Planilha atualizada!\n\nAbas: Abastecimentos, Alarmes, Manutencoes, Config.\n\n' +
-        'Próximo passo: Implantar → Gerenciar implantações → Nova versão do aplicativo da web.'
-    );
-  } catch (e) {
-    Logger.log('Atualização concluída (sem popup de UI).');
-  }
+  Logger.log(
+    'Atualização concluída. Próximo passo: Implantar → Gerenciar implantações → Nova versão do aplicativo da web.'
+  );
+}
+
+function CABECALHO_FILLS_() {
+  return [
+    'id',
+    'data_hora',
+    'km_total',
+    'litros',
+    'valor_rs',
+    'obs',
+    'marcador',
+  ];
 }
 
 function instalarPlanilha() {
@@ -147,14 +153,7 @@ function instalarPlanilha() {
   }
 
   criarAbaSeNaoExiste_(ABAS.CONFIG, ['chave', 'valor']);
-  criarAbaSeNaoExiste_(ABAS.FILLS, [
-    'id',
-    'data_hora',
-    'km_total',
-    'litros',
-    'valor_rs',
-    'obs',
-  ]);
+  criarAbaSeNaoExiste_(ABAS.FILLS, CABECALHO_FILLS_());
   criarAbaSeNaoExiste_(ABAS.ALARMS, CABECALHO_ALARMS_());
   criarAbaSeNaoExiste_(ABAS.LOGS, [
     'id',
@@ -172,6 +171,7 @@ function instalarPlanilha() {
 
   migrarAlarmesSeNecessario_();
   migrarAlarmesObservacoes_();
+  migrarAbastecimentosMarcador_();
 
   Logger.log('OK: abas Abastecimentos, Alarmes, Manutencoes e Config criadas.');
 }
@@ -257,19 +257,58 @@ function migrarAlarmesObservacoes_() {
   Logger.log('Alarmes migrados: coluna observacoes adicionada.');
 }
 
+/** Adds marcador (0–20) to Abastecimentos when the sheet was created before that column. */
+function migrarAbastecimentosMarcador_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(ABAS.FILLS);
+  if (!sheet || sheet.getLastRow() < 1) return;
+
+  const rows = sheet.getDataRange().getValues();
+  const header = rows[0].map(String);
+  if (header.indexOf('marcador') !== -1) return;
+
+  const novoHeader = CABECALHO_FILLS_();
+  const novasLinhas = [novoHeader];
+
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i];
+    if (!r[0]) continue;
+    novasLinhas.push([
+      r[0],
+      r[1],
+      r[2],
+      r[3],
+      r[4],
+      r[5] || '',
+      20,
+    ]);
+  }
+
+  sheet.clear();
+  escreverLinhas_(sheet, 1, novasLinhas, novoHeader.length);
+  sheet.setFrozenRows(1);
+  Logger.log('Abastecimentos migrados: coluna marcador adicionada (padrão 20).');
+}
+
 function criarAbaSeNaoExiste_(nome, cabecalho) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName(nome);
   if (!sheet) {
     sheet = ss.insertSheet(nome);
+    sheet.getRange(1, 1, 1, cabecalho.length).setValues([cabecalho]);
+    sheet.setFrozenRows(1);
   }
-  sheet.getRange(1, 1, 1, cabecalho.length).setValues([cabecalho]);
-  sheet.setFrozenRows(1);
   return sheet;
 }
 
 function obterAba_(nome, cabecalho) {
-  return criarAbaSeNaoExiste_(nome, cabecalho);
+  const sheet = criarAbaSeNaoExiste_(nome, cabecalho);
+  // Ensure header matches when writing a full replace (e.g. empty sheet created earlier).
+  if (sheet.getLastRow() < 1) {
+    sheet.getRange(1, 1, 1, cabecalho.length).setValues([cabecalho]);
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
 }
 
 function lerConfig_(chave) {
@@ -298,10 +337,14 @@ function lerAbastecimentos_() {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ABAS.FILLS);
   if (!sheet) return [];
   const rows = sheet.getDataRange().getValues();
+  if (rows.length < 2) return [];
+  const header = rows[0].map(String);
+  const idxGauge = header.indexOf('marcador');
   const out = [];
   for (let i = 1; i < rows.length; i++) {
     const r = rows[i];
     if (!r[0]) continue;
+    const rawGauge = idxGauge >= 0 ? r[idxGauge] : '';
     out.push({
       id: String(r[0]),
       datetime: String(r[1]),
@@ -309,20 +352,15 @@ function lerAbastecimentos_() {
       liters: Number(r[3]),
       amount: Number(r[4]),
       obs: String(r[5] || ''),
+      fuelGaugeLevel:
+        rawGauge === '' || rawGauge == null ? 20 : Number(rawGauge),
     });
   }
   return out;
 }
 
 function escreverAbastecimentos_(fills) {
-  const header = [
-    'id',
-    'data_hora',
-    'km_total',
-    'litros',
-    'valor_rs',
-    'obs',
-  ];
+  const header = CABECALHO_FILLS_();
   const sheet = obterAba_(ABAS.FILLS, header);
   sheet.clear();
   sheet.getRange(1, 1, 1, header.length).setValues([header]);
@@ -335,6 +373,7 @@ function escreverAbastecimentos_(fills) {
     f.liters,
     f.amount,
     f.obs || '',
+    f.fuelGaugeLevel != null && f.fuelGaugeLevel !== '' ? Number(f.fuelGaugeLevel) : 20,
   ]);
   escreverLinhas_(sheet, 2, rows, header.length);
 }

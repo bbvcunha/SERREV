@@ -1,5 +1,15 @@
 const LOCALE = 'pt-BR';
 
+/** Honda CR-V 2020 EXL — used to correct consumption when the tank is not filled to full. */
+const TANK_CAPACITY_LITERS = 58;
+const FUEL_GAUGE_MAX = 20;
+const DEFAULT_FUEL_GAUGE_LEVEL = FUEL_GAUGE_MAX;
+
+/** One-time corrections for fills recorded before fuelGaugeLevel existed. */
+const KNOWN_PARTIAL_FILL_MIGRATIONS = [
+  { id: '5b944fd0-6aab-458e-8e56-cb45950ab4d7', fuelGaugeLevel: 11, flag: 'carKpi_mig_gauge_5b944fd0' },
+];
+
 const DEFAULT_MAINTENANCE = [
   { id: 'oil', label: 'Óleo do motor', intervalKm: 10000, intervalMonths: 12, lastServiceKm: 0, lastServiceDate: '' },
   { id: 'tires', label: 'Pneus', intervalKm: 40000, intervalMonths: 0, lastServiceKm: 0, lastServiceDate: '' },
@@ -16,8 +26,64 @@ let currentScreen = 'entry';
 let editingServiceId = null;
 let currentServiceFilter = 'pending';
 
+function clampFuelGaugeLevel(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return DEFAULT_FUEL_GAUGE_LEVEL;
+  return Math.max(0, Math.min(FUEL_GAUGE_MAX, Math.round(n)));
+}
+
+function normalizeFill(fill) {
+  return {
+    ...fill,
+    fuelGaugeLevel: clampFuelGaugeLevel(
+      fill.fuelGaugeLevel != null && fill.fuelGaugeLevel !== ''
+        ? fill.fuelGaugeLevel
+        : DEFAULT_FUEL_GAUGE_LEVEL
+    ),
+  };
+}
+
+function getFuelGaugeLevel(fill) {
+  return clampFuelGaugeLevel(fill?.fuelGaugeLevel ?? DEFAULT_FUEL_GAUGE_LEVEL);
+}
+
+/**
+ * Liters actually consumed since the previous fill.
+ * When the gauge ends below the previous level, pumped liters understate usage;
+ * when topping up after a partial fill, pumped liters overstate usage.
+ */
+function computeEffectiveLitersUsed(prevFill, fill) {
+  const prevGauge = prevFill ? getFuelGaugeLevel(prevFill) : DEFAULT_FUEL_GAUGE_LEVEL;
+  const currentGauge = getFuelGaugeLevel(fill);
+  return fill.liters + (TANK_CAPACITY_LITERS * (prevGauge - currentGauge)) / FUEL_GAUGE_MAX;
+}
+
 function getFills() {
-  return DataStore.fills;
+  return DataStore.fills.map(normalizeFill);
+}
+
+function migrateFuelGaugeLevels() {
+  let changed = false;
+  DataStore.fills = DataStore.fills.map((fill) => {
+    const normalized = normalizeFill(fill);
+    if (fill.fuelGaugeLevel !== normalized.fuelGaugeLevel) changed = true;
+    return normalized;
+  });
+
+  for (const migration of KNOWN_PARTIAL_FILL_MIGRATIONS) {
+    if (localStorage.getItem(migration.flag)) continue;
+    const idx = DataStore.fills.findIndex((f) => f.id === migration.id);
+    if (idx !== -1) {
+      DataStore.fills[idx] = {
+        ...normalizeFill(DataStore.fills[idx]),
+        fuelGaugeLevel: migration.fuelGaugeLevel,
+      };
+      changed = true;
+    }
+    localStorage.setItem(migration.flag, '1');
+  }
+
+  return changed;
 }
 
 function getMaintenance() {
@@ -64,24 +130,34 @@ function sortFills(fills) {
 }
 
 function enrichFills(fills) {
-  const sorted = sortFills(fills);
+  const sorted = sortFills(fills.map(normalizeFill));
   return sorted.map((fill, index) => {
     const pricePerLiter = fill.liters > 0 ? fill.amount / fill.liters : null;
     let consumption = null;
     let distanceKm = null;
     let costPerKm = null;
     let daysSincePrev = null;
+    let effectiveLiters = null;
 
     if (index > 0) {
       const prev = sorted[index - 1];
       distanceKm = fill.mileage - prev.mileage;
       const ms = new Date(fill.datetime) - new Date(prev.datetime);
       daysSincePrev = ms / (1000 * 60 * 60 * 24);
-      if (distanceKm > 0 && fill.liters > 0) consumption = distanceKm / fill.liters;
+      effectiveLiters = computeEffectiveLitersUsed(prev, fill);
+      if (distanceKm > 0 && effectiveLiters > 0) consumption = distanceKm / effectiveLiters;
       if (distanceKm > 0) costPerKm = fill.amount / distanceKm;
     }
 
-    return { ...fill, pricePerLiter, consumption, distanceKm, costPerKm, daysSincePrev };
+    return {
+      ...fill,
+      pricePerLiter,
+      consumption,
+      distanceKm,
+      costPerKm,
+      daysSincePrev,
+      effectiveLiters,
+    };
   });
 }
 
@@ -146,11 +222,12 @@ function buildMonthlyStats(enriched) {
   const litersTotals = new Map();
 
   enriched.forEach((fill, index) => {
-    if (index === 0 || fill.distanceKm == null || fill.distanceKm <= 0 || fill.liters <= 0) return;
+    const periodLiters = fill.effectiveLiters ?? fill.liters;
+    if (index === 0 || fill.distanceKm == null || fill.distanceKm <= 0 || periodLiters <= 0) return;
     const prev = enriched[index - 1];
     for (const { key, share } of allocatePeriodShareToMonths(prev.datetime, fill.datetime)) {
       kmTotals.set(key, (kmTotals.get(key) || 0) + fill.distanceKm * share);
-      litersTotals.set(key, (litersTotals.get(key) || 0) + fill.liters * share);
+      litersTotals.set(key, (litersTotals.get(key) || 0) + periodLiters * share);
     }
   });
 
@@ -188,7 +265,10 @@ function computeKpiSummary(enriched) {
   const intervals = enriched.filter((r) => r.daysSincePrev != null && r.daysSincePrev >= 0);
 
   const totalKm = periods.reduce((s, r) => s + r.distanceKm, 0);
-  const totalLitersPeriods = periods.reduce((s, r) => s + r.liters, 0);
+  const totalLitersPeriods = periods.reduce(
+    (s, r) => s + (r.effectiveLiters ?? r.liters),
+    0
+  );
   const periodSpent = periods.reduce((s, r) => s + r.amount, 0);
 
   const allFills = enriched.filter((r) => r.liters > 0);
@@ -569,6 +649,7 @@ function renderTable() {
       const price = row.pricePerLiter != null ? `R$ ${formatNumber(row.pricePerLiter, 3)}` : '—';
       const cons = row.consumption != null ? formatNumber(row.consumption, 2) : '—';
       const costKm = row.costPerKm != null ? `R$ ${formatNumber(row.costPerKm, 3)}` : '—';
+      const gauge = `${getFuelGaugeLevel(row)}/${FUEL_GAUGE_MAX}`;
       const obsLabel = row.obs?.trim() ? row.obs.trim() : 'Adicionar…';
       const obsClass = row.obs?.trim() ? 'has-note' : '';
 
@@ -576,6 +657,7 @@ function renderTable() {
         <td>${formatDateTime(row.datetime)}</td>
         <td>${formatNumber(row.mileage)}</td>
         <td>${formatNumber(row.liters, 2)}</td>
+        <td>${gauge}</td>
         <td>R$ ${formatMoney(row.amount)}</td>
         <td>${price}</td>
         <td>${cons}</td>
@@ -1237,6 +1319,7 @@ function openFillDialog(id = null) {
   const dt = document.getElementById('fill-datetime');
   const km = document.getElementById('fill-mileage');
   const L = document.getElementById('fill-liters');
+  const gauge = document.getElementById('fill-fuel-gauge');
   const amt = document.getElementById('fill-amount');
 
   if (id) {
@@ -1248,12 +1331,14 @@ function openFillDialog(id = null) {
     dt.value = d.toISOString().slice(0, 16);
     km.value = fill.mileage;
     L.value = fill.liters;
+    gauge.value = getFuelGaugeLevel(fill);
     amt.value = fill.amount;
   } else {
     title.textContent = 'Adicionar ao histórico';
     initDatetimeInput(dt);
     km.value = '';
     L.value = '';
+    gauge.value = String(DEFAULT_FUEL_GAUGE_LEVEL);
     amt.value = '';
   }
 
@@ -1264,6 +1349,7 @@ async function saveFillFromDialog() {
   const datetime = document.getElementById('fill-datetime').value;
   const mileage = parseFloat(document.getElementById('fill-mileage').value);
   const liters = parseFloat(document.getElementById('fill-liters').value);
+  const fuelGaugeLevel = clampFuelGaugeLevel(document.getElementById('fill-fuel-gauge').value);
   const amount = parseFloat(document.getElementById('fill-amount').value);
 
   if (mileage < 0 || liters <= 0 || amount <= 0) {
@@ -1271,13 +1357,15 @@ async function saveFillFromDialog() {
     return false;
   }
 
+  const existing = editingFillId ? getFills().find((f) => f.id === editingFillId) : null;
   const record = {
     id: editingFillId || crypto.randomUUID(),
     datetime: new Date(datetime).toISOString(),
     mileage,
     liters,
+    fuelGaugeLevel,
     amount,
-    obs: editingFillId ? getFills().find((f) => f.id === editingFillId)?.obs || '' : '',
+    obs: existing?.obs || '',
   };
 
   if (editingFillId) {
@@ -1423,6 +1511,7 @@ async function saveFillEntry(formEl, isQuickEntry) {
   const datetime = document.getElementById('field-datetime').value;
   const mileage = parseFloat(document.getElementById('field-mileage').value);
   const liters = parseFloat(document.getElementById('field-liters').value);
+  const fuelGaugeLevel = clampFuelGaugeLevel(document.getElementById('field-fuel-gauge').value);
   const amount = parseFloat(document.getElementById('field-amount').value);
 
   if (mileage < 0 || liters <= 0 || amount <= 0) {
@@ -1441,6 +1530,7 @@ async function saveFillEntry(formEl, isQuickEntry) {
     datetime: new Date(datetime).toISOString(),
     mileage,
     liters,
+    fuelGaugeLevel,
     amount,
     obs: '',
   });
@@ -1449,6 +1539,7 @@ async function saveFillEntry(formEl, isQuickEntry) {
     await DataStore.persist();
     formEl.reset();
     initDatetimeInput(document.getElementById('field-datetime'));
+    document.getElementById('field-fuel-gauge').value = String(DEFAULT_FUEL_GAUGE_LEVEL);
     refreshUI();
 
     const btn = formEl.querySelector('button[type="submit"]');
@@ -1693,7 +1784,14 @@ async function bootstrap() {
     } catch { /* ignore */ }
   }
 
+  if (migrateFuelGaugeLevels()) {
+    try {
+      await DataStore.persist();
+    } catch { /* ignore */ }
+  }
+
   initDatetimeInput(document.getElementById('field-datetime'));
+  document.getElementById('field-fuel-gauge').value = String(DEFAULT_FUEL_GAUGE_LEVEL);
   refreshUI();
 }
 

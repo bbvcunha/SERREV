@@ -158,6 +158,14 @@ label {
   font-weight: 500;
 }
 
+.field-hint {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 400;
+  color: var(--muted);
+}
+
 label input[type="number"],
 label input[type="datetime-local"],
 label input[type="text"],

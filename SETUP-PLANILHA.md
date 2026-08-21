@@ -98,7 +98,7 @@ Em ~1 minuto: https://bbvcunha.github.io/SERREV/
 
 Você pode alterar células manualmente. Na próxima **Sincronizar agora** no app, os dados da planilha prevalecem.
 
-Colunas **Abastecimentos:** `id` | `data_hora` | `km_total` | `litros` | `valor_rs` | `obs`
+Colunas **Abastecimentos:** `id` | `data_hora` | `km_total` | `litros` | `valor_rs` | `obs` | `marcador` (0–20; 20 = tanque cheio; padrão 20)
 
 Colunas **Alarmes:** `id` | `nome` | `intervalo_km` | `intervalo_meses` | `ultima_manutencao_km` | `ultima_manutencao_data` | `observacoes`
 
